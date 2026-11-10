@@ -725,12 +725,15 @@ export default function App() {
       // 2. Category filter (if set from sidebar or tile)
       if (categoryInput) {
         const backendCat = (DISPLAY_TO_BACKEND_CATEGORY[categoryInput] || categoryInput).toLowerCase();
-        const vCat = (venue.category || '').toLowerCase();
+        // venue.category is a display label ("Banquet Halls"); compare on
+        // the backend key so "banquet" matches "banquet_hall" venues.
+        // (The label/key mismatch made every non-sports category tile
+        // return zero results.)
+        const vCatKey = (DISPLAY_TO_BACKEND_CATEGORY[venue.category] || venue.category || '').toLowerCase();
         const vType = (venue.venueType || '').toLowerCase();
         const matchesCat =
-          vCat.includes(backendCat) ||
-          backendCat.includes(vCat) ||
-          vType.includes(backendCat);
+          vCatKey === backendCat ||
+          vType.replace(/[\s-]+/g, '_').includes(backendCat);
         if (!matchesCat) return false;
       }
 
@@ -1119,7 +1122,7 @@ export default function App() {
                         {searchHeading}
                       </h1>
                       <p className="font-sans text-xs text-on-surface-variant mt-0.5">
-                        Showing <span className="font-bold text-pitch">{totalVenuesCount === 0 ? 0 : `${(safePage - 1) * pageSize + 1}-${Math.min(safePage * pageSize, totalVenuesCount)}`}</span> of <span className="font-bold text-pitch">{totalVenuesCount}</span> professional-grade spaces
+                        Showing <span className="font-bold text-pitch">{totalVenuesCount === 0 ? 0 : `${(safePage - 1) * pageSize + 1}-${Math.min(safePage * pageSize, totalVenuesCount)}`}</span> of <span className="font-bold text-pitch">{totalVenuesCount}</span> venues
                       </p>
                     </div>
                     

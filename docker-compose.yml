@@ -1,0 +1,74 @@
+# GroundKart production stack: Postgres, API, web (nginx + SPA).
+#
+#   cp deploy/.env.production.example .env   # then fill it in
+#   docker compose up -d --build
+#   docker compose exec api python -m scripts.admin_setup   # first super admin
+#
+# Only the web container publishes a port. Put TLS in front of it
+# (deploy/nginx-host.conf, Caddy, or Hostinger's proxy) and point the domain there.
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-groundkart}
+      POSTGRES_USER: ${POSTGRES_USER:-groundkart}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-groundkart} -d ${POSTGRES_DB:-groundkart}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build: ./backend
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file: .env
+    environment:
+      ENVIRONMENT: production
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-groundkart}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-groundkart}
+      UPLOADS_DIR: /data/uploads
+      PRIVATE_UPLOADS_DIR: /data/private-uploads
+    volumes:
+      - uploads:/data/uploads
+      - private_uploads:/data/private-uploads
+
+  web:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_URL: ""                      # same origin: nginx proxies /api
+        VITE_SITE_URL: ${PUBLIC_APP_URL:?set PUBLIC_APP_URL in .env}
+    restart: unless-stopped
+    depends_on:
+      - api
+    ports:
+      - "${WEB_PORT:-8080}:80"
+
+  # Nightly logical backup kept for 14 days in the "backups" volume.
+  backup:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - backups:/backups
+    entrypoint: >
+      sh -c 'while true; do
+        pg_dump -h db -U ${POSTGRES_USER:-groundkart} -d ${POSTGRES_DB:-groundkart} -Fc -f /backups/groundkart-$$(date +%Y%m%d-%H%M).dump &&
+        find /backups -name "*.dump" -mtime +14 -delete;
+        sleep 86400; done'
+
+volumes:
+  pgdata:
+  uploads:
+  private_uploads:
+  backups:

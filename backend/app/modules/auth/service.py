@@ -42,11 +42,21 @@ def _hash_token(raw: str) -> str:
 
 
 def get_client_ip(request: Request) -> str:
-    """Extract client IP, inspecting standard proxy headers before falling
-    back to socket peer address. Gracefully handles local test clients."""
+    """The client's IP, for rate limiting.
+
+    The FIRST X-Forwarded-For entry is whatever the client chose to send, so
+    trusting it let anyone dodge per-IP rate limits by setting the header.
+    Instead: X-Real-IP, which our nginx overwrites with the real peer
+    address (deploy/nginx.conf), then the LAST X-Forwarded-For entry, which
+    is the one our own proxy appended, then the socket peer."""
+    real_ip = request.headers.get("x-real-ip")
+    if real_ip and real_ip.strip():
+        return real_ip.strip()
     forwarded = request.headers.get("x-forwarded-for")
     if forwarded:
-        return forwarded.split(",")[0].strip()
+        last = forwarded.split(",")[-1].strip()
+        if last:
+            return last
     if request.client and request.client.host:
         return request.client.host
     return "127.0.0.1"
