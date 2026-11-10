@@ -8,6 +8,8 @@ export interface NavItem {
   badge?: number;
   onClick?: () => void;
   href?: string;
+  /** Optional group heading; a heading is drawn wherever the section changes. */
+  section?: string;
 }
 
 export interface DashboardShellProps {
@@ -83,8 +85,12 @@ export function DashboardShell({
 
         <div className="flex flex-col justify-between h-full min-h-0">
           <nav className="flex-1 min-h-0 overflow-y-auto px-4 py-6 space-y-1 custom-scrollbar overscroll-contain" data-lenis-prevent>
-            {navItems.map((item) => {
+            {navItems.map((item, index) => {
               const isActive = activeNavId === item.id;
+              const sectionHeading =
+                item.section && item.section !== navItems[index - 1]?.section ? (
+                  <p className={`px-3 pb-1 text-xs font-medium text-on-surface-variant/80 ${index === 0 ? '' : 'pt-4'}`}>{item.section}</p>
+                ) : null;
               const content = (
                 <>
                   <item.icon size={18} />
@@ -105,23 +111,30 @@ export function DashboardShell({
 
               if (item.href) {
                 return (
-                  <a key={item.id} href={item.href} className={className} onClick={() => setIsMobileMenuOpen(false)}>
-                    {content}
-                  </a>
+                  <React.Fragment key={item.id}>
+                    {sectionHeading}
+                    <a href={item.href} className={className} onClick={() => setIsMobileMenuOpen(false)}>
+                      {content}
+                    </a>
+                  </React.Fragment>
                 );
               }
 
               return (
-                <button 
-                  key={item.id} 
-                  onClick={() => {
-                    item.onClick?.();
-                    setIsMobileMenuOpen(false);
-                  }}
-                  className={`w-full text-left ${className}`}
-                >
-                  {content}
-                </button>
+                <React.Fragment key={item.id}>
+                  {sectionHeading}
+                  <button
+                    type="button"
+                    aria-current={isActive ? 'page' : undefined}
+                    onClick={() => {
+                      item.onClick?.();
+                      setIsMobileMenuOpen(false);
+                    }}
+                    className={`w-full text-left ${className}`}
+                  >
+                    {content}
+                  </button>
+                </React.Fragment>
               );
             })}
           </nav>
@@ -134,16 +147,16 @@ export function DashboardShell({
                 </div>
                 <div className="min-w-0 flex-1">
                   <p className="truncate font-sans text-sm font-semibold text-ink">{userName}</p>
-                  <p className="truncate font-sans text-xs text-on-surface-variant capitalize">{userRole}</p>
+                  <p className="truncate font-sans text-xs text-on-surface-variant">{userRole}</p>
                 </div>
                 <div className="flex gap-1">
                   {onReturnToSite && (
-                    <button onClick={onReturnToSite} className="p-1.5 text-on-surface-variant hover:text-ink hover:bg-surface-container rounded-md transition-colors" title="Return to site">
+                    <button type="button" aria-label="Return to site" onClick={onReturnToSite} className="p-1.5 text-on-surface-variant hover:text-ink hover:bg-surface-container rounded-md transition-colors" title="Return to site">
                       <Globe size={16} />
                     </button>
                   )}
                   {onLogout && (
-                    <button onClick={onLogout} className="p-1.5 text-on-surface-variant hover:text-clay hover:bg-red-50 rounded-md transition-colors" title="Log out">
+                    <button type="button" aria-label="Log out" onClick={onLogout} className="p-1.5 text-on-surface-variant hover:text-clay hover:bg-red-50 rounded-md transition-colors" title="Log out">
                       <LogOut size={16} />
                     </button>
                   )}
@@ -159,7 +172,9 @@ export function DashboardShell({
         {/* Header */}
         <header className="sticky top-0 z-30 flex h-16 shrink-0 items-center justify-between border-b border-surface-container bg-surface-container-lowest/80 px-4 backdrop-blur-md sm:px-6 lg:px-8">
           <div className="flex items-center gap-4">
-            <button 
+            <button
+              type="button"
+              aria-label="Open menu"
               className="lg:hidden p-2 -ml-2 text-on-surface-variant"
               onClick={() => setIsMobileMenuOpen(true)}
             >

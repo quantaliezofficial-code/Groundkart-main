@@ -7,6 +7,12 @@ import { Activity, AlertCircle, Ban, CalendarClock, CheckCircle2, Database, File
 import { DashboardShell, MetricCard, StatusBadge as DashboardStatusBadge, EmptyState } from './dashboard';
 import { Home } from 'lucide-react';
 import HomepageTab from './dashboard/HomepageTab';
+import RecordsTab from './admin/RecordsTab';
+import PartnersTab from './admin/PartnersTab';
+import BannersTab from './admin/BannersTab';
+import SettingsTab from './admin/SettingsTab';
+import TeamTab from './admin/TeamTab';
+import { FileSpreadsheet, Handshake, Megaphone, SlidersHorizontal, UserCog } from 'lucide-react';
 import { AdminVenueDrawer } from './dashboard/AdminVenueDrawer';
 import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
@@ -57,7 +63,10 @@ import type {
 } from '../lib/api/types';
 import { useAuth } from '../lib/auth';
 
-type Tab = 'Overview' | 'Analytics' | 'DatabaseStudio' | 'ApprovalQueue' | 'Venues' | 'Users' | 'Bookings' | 'Payouts' | 'Reviews' | 'Support' | 'Notifications' | 'Homepage' | 'Passwords';
+type Tab = 'Overview' | 'Analytics' | 'DatabaseStudio' | 'ApprovalQueue' | 'Venues' | 'Users' | 'Bookings' | 'Payouts' | 'Reviews' | 'Support' | 'Notifications' | 'Homepage' | 'Passwords'
+  | 'Records' | 'Partners' | 'Banners' | 'Settings' | 'Team';
+
+const ALL_TABS: Tab[] = ['Overview', 'Analytics', 'DatabaseStudio', 'ApprovalQueue', 'Venues', 'Users', 'Bookings', 'Payouts', 'Reviews', 'Support', 'Notifications', 'Homepage', 'Passwords', 'Records', 'Partners', 'Banners', 'Settings', 'Team'];
 
 function money(value: string | number): string {
   const n = typeof value === 'string' ? Number(value) : value;
@@ -128,7 +137,7 @@ function AdminDashboard({ onReturnToSite }: { onReturnToSite?: () => void }) {
   const [searchParams] = useSearchParams();
   const urlTab = searchParams.get('tab') as Tab | null;
   const [activeTab, setActiveTab] = useState<Tab>(() => {
-    if (urlTab && ['Overview', 'Analytics', 'ApprovalQueue', 'Venues', 'Users', 'Bookings', 'Payouts', 'Reviews', 'Support', 'Notifications', 'Homepage', 'Passwords'].includes(urlTab)) {
+    if (urlTab && ALL_TABS.includes(urlTab)) {
       return urlTab;
     }
     const saved = sessionStorage.getItem('initialAdminTab') as Tab;
@@ -140,7 +149,7 @@ function AdminDashboard({ onReturnToSite }: { onReturnToSite?: () => void }) {
   });
 
   useEffect(() => {
-    if (urlTab && ['Overview', 'Analytics', 'ApprovalQueue', 'Venues', 'Users', 'Bookings', 'Payouts', 'Reviews', 'Support', 'Notifications', 'Homepage', 'Passwords'].includes(urlTab)) {
+    if (urlTab && ALL_TABS.includes(urlTab)) {
       setActiveTab(urlTab);
     }
   }, [urlTab]);
@@ -169,20 +178,27 @@ function AdminDashboard({ onReturnToSite }: { onReturnToSite?: () => void }) {
   });
   const pendingCount = pendingVenues.length + pendingVerifications.length;
 
+  const isSuper = Boolean(user?.is_super_admin);
+  const go = (tab: Tab) => () => setActiveTab(tab);
   const navItems = [
-    { id: 'Overview', label: 'Overview', icon: LayoutDashboard, onClick: () => setActiveTab('Overview') },
-    { id: 'DatabaseStudio', label: 'DB & Analytics', icon: Database, onClick: () => setActiveTab('DatabaseStudio') },
-    { id: 'Analytics', label: 'Analytics', icon: Activity, onClick: () => setActiveTab('Analytics') },
-    { id: 'ApprovalQueue', label: 'Approval Queue', icon: ShieldCheck, badge: pendingCount || undefined, onClick: () => setActiveTab('ApprovalQueue') },
-    { id: 'Venues', label: 'Venues', icon: Layers, onClick: () => setActiveTab('Venues') },
-    { id: 'Users', label: 'Users', icon: UsersIcon, onClick: () => setActiveTab('Users') },
-    { id: 'Bookings', label: 'Bookings', icon: CalendarClock, onClick: () => setActiveTab('Bookings') },
-    { id: 'Payouts', label: 'Payouts', icon: Wallet, onClick: () => setActiveTab('Payouts') },
-    { id: 'Reviews', label: 'Reviews', icon: MessageSquare, onClick: () => setActiveTab('Reviews') },
-    { id: 'Support', label: 'Support Tickets', icon: AlertCircle, onClick: () => setActiveTab('Support') },
-    { id: 'Passwords', label: 'Passwords', icon: Key, onClick: () => setActiveTab('Passwords') },
-    { id: 'Notifications', label: 'Notification Center', icon: Bell, onClick: () => setActiveTab('Notifications') },
-    { id: 'Homepage', label: 'Homepage Curation', icon: Globe, onClick: () => setActiveTab('Homepage') },
+    { section: 'Daily work', id: 'Overview', label: 'Overview', icon: LayoutDashboard, onClick: go('Overview') },
+    { section: 'Daily work', id: 'ApprovalQueue', label: 'Approval queue', icon: ShieldCheck, badge: pendingCount || undefined, onClick: go('ApprovalQueue') },
+    { section: 'Daily work', id: 'Bookings', label: 'Bookings', icon: CalendarClock, onClick: go('Bookings') },
+    { section: 'Daily work', id: 'Support', label: 'Support tickets', icon: AlertCircle, onClick: go('Support') },
+    { section: 'Marketplace', id: 'Venues', label: 'Venues', icon: Layers, onClick: go('Venues') },
+    { section: 'Marketplace', id: 'Users', label: 'Users', icon: UsersIcon, onClick: go('Users') },
+    { section: 'Marketplace', id: 'Partners', label: 'Referral partners', icon: Handshake, onClick: go('Partners') },
+    { section: 'Marketplace', id: 'Reviews', label: 'Reviews', icon: MessageSquare, onClick: go('Reviews') },
+    { section: 'Money and records', id: 'Payouts', label: 'Owner payouts', icon: Wallet, onClick: go('Payouts') },
+    { section: 'Money and records', id: 'Records', label: 'Records and exports', icon: FileSpreadsheet, onClick: go('Records') },
+    { section: 'Money and records', id: 'Analytics', label: 'Analytics', icon: Activity, onClick: go('Analytics') },
+    { section: 'Money and records', id: 'DatabaseStudio', label: 'Database studio', icon: Database, onClick: go('DatabaseStudio') },
+    { section: 'Website', id: 'Homepage', label: 'Homepage venues', icon: Globe, onClick: go('Homepage') },
+    { section: 'Website', id: 'Banners', label: 'Banners', icon: Megaphone, onClick: go('Banners') },
+    { section: 'Website', id: 'Notifications', label: 'Notifications', icon: Bell, onClick: go('Notifications') },
+    { section: 'Platform', id: 'Settings', label: 'Rules and fees', icon: SlidersHorizontal, onClick: go('Settings') },
+    { section: 'Platform', id: 'Passwords', label: 'Passwords', icon: Key, onClick: go('Passwords') },
+    ...(isSuper ? [{ section: 'Platform', id: 'Team', label: 'Admin team', icon: UserCog, onClick: go('Team') }] : []),
   ];
 
   const titles: Record<Tab, { title: string; desc: string }> = {
@@ -199,6 +215,11 @@ function AdminDashboard({ onReturnToSite }: { onReturnToSite?: () => void }) {
     Homepage: { title: 'Homepage Curation', desc: 'Manage the public homepage layout and featured venues' },
     Notifications: { title: 'Notifications', desc: 'Manage notifications' },
     Passwords: { title: 'Password Management', desc: 'Admin password reset and account recovery tools' },
+    Records: { title: 'Records and exports', desc: 'Every listing and booking with its money trail, ready to download' },
+    Partners: { title: 'Referral partners', desc: 'Partners, their venues, commission and payouts' },
+    Banners: { title: 'Banners', desc: 'Promotions and announcements on the website' },
+    Settings: { title: 'Rules and fees', desc: 'Booking holds, refunds, commission and payout timing' },
+    Team: { title: 'Admin team', desc: 'Who can use this console' },
   };
 
   const currentInfo = titles[activeTab];
@@ -210,7 +231,7 @@ function AdminDashboard({ onReturnToSite }: { onReturnToSite?: () => void }) {
       navItems={navItems}
       activeNavId={activeTab}
       userName={user?.name}
-      userRole={user?.role}
+      userRole={isSuper ? 'Super admin' : 'Admin'}
         onLogout={logout}
         onReturnToSite={onReturnToSite}
     >
@@ -241,6 +262,11 @@ function AdminDashboard({ onReturnToSite }: { onReturnToSite?: () => void }) {
       {activeTab === 'Passwords' && <AdminPasswords />}
       {activeTab === 'Homepage' && <HomepageTab />}
       {activeTab === 'Notifications' && <AdminNotifications />}
+      {activeTab === 'Records' && <RecordsTab />}
+      {activeTab === 'Partners' && <PartnersTab />}
+      {activeTab === 'Banners' && <BannersTab />}
+      {activeTab === 'Settings' && <SettingsTab />}
+      {activeTab === 'Team' && (isSuper ? <TeamTab /> : <EmptyState icon={ShieldCheck} title="Super admin only" description="Only the super admin can manage the admin team." />)}
     </DashboardShell>
   );
 }

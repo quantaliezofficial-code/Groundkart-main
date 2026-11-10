@@ -327,11 +327,30 @@ export interface RegisterFilters {
   offset?: number;
 }
 
+// ---- Platform settings -----------------------------------------------------
+
+export interface PlatformSettings {
+  booking_hold_duration_minutes: number;
+  booking_grace_period_hours: number;
+  cancellation_full_refund_hours: number;
+  cancellation_partial_refund_hours: number;
+  cancellation_partial_refund_percent: number;
+  platform_commission_percent: number;
+  payout_holdback_days: number;
+  default_broker_commission_percent: string;
+  updated_at: string;
+}
+
 type Query = Record<string, string | number | boolean | undefined>;
 const q = (filters: object): Query =>
   Object.fromEntries(Object.entries(filters).filter(([, v]) => v !== undefined && v !== '' && v !== null)) as Query;
 
 export const platformApi = {
+  // Platform rules
+  getSettings: () => api.get<PlatformSettings>('/api/v1/admin/settings'),
+  updateSettings: (body: Partial<Omit<PlatformSettings, 'updated_at'>>) =>
+    api.patch<PlatformSettings>('/api/v1/admin/settings', body),
+
   // Team (super admin)
   listTeam: () => api.get<TeamMember[]>('/api/v1/admin/team'),
   createAdmin: (body: { name: string; phone: string; email?: string | null }) =>

@@ -153,7 +153,7 @@ describe('Admin dashboard role gating', () => {
     mockLoggedInAs('admin');
     renderApp();
     expect(await screen.findByText('Admin Dashboard', {}, { timeout: 5000 })).toBeInTheDocument();
-    expect(screen.getByText('Approval Queue')).toBeInTheDocument();
+    expect(screen.getByText('Approval queue')).toBeInTheDocument();
   });
 
   it('a logged-in customer never reaches the Admin Dashboard (no route in to it at all)', async () => {
@@ -225,7 +225,7 @@ describe('Admin dashboard data + mutations', () => {
     mockLoggedInAs('admin');
     renderApp();
     await screen.findByText('Admin Dashboard');
-    fireEvent.click(await screen.findByText('Approval Queue'));
+    fireEvent.click(await screen.findByText('Approval queue'));
 
     // Shows the real owner's name, not a bare UUID.
     expect(await screen.findAllByText(/Rekha Nair/)).toHaveLength(1);
@@ -255,7 +255,7 @@ describe('Admin dashboard data + mutations', () => {
     mockLoggedInAs('admin');
     renderApp();
     await screen.findByText('Admin Dashboard');
-    fireEvent.click(await screen.findByText('Approval Queue'));
+    fireEvent.click(await screen.findByText('Approval queue'));
 
     expect(await screen.findByText('Amit Sports Hub')).toBeInTheDocument();
     const viewBtn = screen.getByRole('button', { name: /view document/i });
@@ -335,7 +335,7 @@ describe('Admin dashboard data + mutations', () => {
     mockLoggedInAs('admin');
     renderApp();
     await screen.findByText('Admin Dashboard');
-    fireEvent.click(await screen.findByText('Payouts'));
+    fireEvent.click(await screen.findByText('Owner payouts'));
 
     expect(await screen.findByText(/Vikram Singh/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /mark paid/i }));

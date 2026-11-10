@@ -44,7 +44,7 @@ export default function MyBookings({
 
   const getVenueImage = (venueId: string) => {
     const venue = venues.find((v) => v.id === venueId);
-    return venue ? venue.image : 'https://images.unsplash.com/photo-1546519638-68e109498ffc?auto=format&fit=crop&q=80&w=600';
+    return venue ? venue.image : '/img/occasions/dusk-sports-sm.webp';
   };
 
   const getVenueAddress = (venueId: string) => {

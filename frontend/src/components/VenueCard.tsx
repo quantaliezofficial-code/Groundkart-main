@@ -1,7 +1,6 @@
-import { SafeImage } from './dashboard';
 import React, { useMemo } from 'react';
-import { Star, MapPin, Heart, Sparkles } from 'lucide-react';
-import { motion } from 'framer-motion';
+import { Heart, MapPin, Star } from 'lucide-react';
+import { SafeImage } from './dashboard';
 import { Venue } from '../types';
 
 interface VenueCardProps {
@@ -12,173 +11,125 @@ interface VenueCardProps {
   isFavorite: boolean;
 }
 
-export default function VenueCard({
-  venue,
-  onClick,
-  onToggleFavorite,
-  isFavorite
-}: VenueCardProps) {
+const UNIT_SHORT: Record<string, string> = { hour: 'hr', half_day: 'half day', full_day: 'day' };
+const priceFormat = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 });
+
+/**
+ * Listing card used on the homepage and in search results.
+ *
+ * Hover feedback is a shadow change only. The previous card animated its
+ * position, every badge faded in on mount and the rating chip popped in
+ * after a delay, which made long result lists flicker while scrolling.
+ */
+export default function VenueCard({ venue, onClick, onToggleFavorite, isFavorite }: VenueCardProps) {
   const isNew = useMemo(() => {
     if (!venue.createdAt) return false;
-    const createdDate = new Date(venue.createdAt);
-    if (isNaN(createdDate.getTime())) return false;
-    const diffDays = (Date.now() - createdDate.getTime()) / (1000 * 60 * 60 * 24);
-    return diffDays >= 0 && diffDays <= 60;
+    const created = new Date(venue.createdAt);
+    if (Number.isNaN(created.getTime())) return false;
+    const days = (Date.now() - created.getTime()) / 86_400_000;
+    return days >= 0 && days <= 60;
   }, [venue.createdAt]);
 
-  const keyAmenities = useMemo(() => {
-    const list = venue.amenities || [];
-    return list.slice(0, 2);
-  }, [venue.amenities]);
+  const title = venue.displayName || venue.name;
+  const place = venue.district && venue.district !== venue.city ? `${venue.city}, ${venue.district}` : venue.city || venue.district;
+  const capacityLabel = venue.capacity ? `Up to ${venue.capacity} guests` : `${venue.capacityGroup} Cap`;
+  const showUseCase =
+    venue.useCases &&
+    venue.useCases.length > 0 &&
+    (!venue.venueType || venue.useCases[0].trim().toLowerCase() !== venue.venueType.trim().toLowerCase());
 
   return (
-    <motion.div
+    <article
       onClick={() => onClick(venue.id)}
-      whileHover={{ y: -6, boxShadow: '0 20px 40px rgba(28,94,63,0.12)' }}
-      transition={{ type: 'spring', stiffness: 300, damping: 25 }}
-      className={`bg-chalk rounded-2xl ring-1 ring-ink/5 overflow-hidden flex flex-col shadow-lg transition-colors cursor-pointer group select-none ${
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onClick(venue.id);
+        }
+      }}
+      tabIndex={0}
+      role="link"
+      aria-label={`${title}, ${place}`}
+      className={`group flex h-full cursor-pointer flex-col overflow-hidden rounded-2xl bg-chalk ring-1 ring-ink/5 shadow-sm transition-shadow duration-200 hover:shadow-[0_16px_32px_-12px_rgba(6,40,29,0.22)] ${
         venue.isFullyBookedToday ? 'opacity-85' : ''
-      } ease-out`}
+      }`}
     >
-      {/* Venue Media Crop (4:3) */}
-      <div className="relative aspect-[4/3] w-full bg-surface-container-high overflow-hidden rounded-t-2xl">
-        <SafeImage src={venue.image} alt={`${venue.name} — ${venue.category} in ${venue.city}`} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700 ease-out" />
+      <div className="relative aspect-[4/3] w-full overflow-hidden bg-surface-container-high">
+        <SafeImage
+          src={venue.image}
+          alt={`${title}, ${venue.category} in ${venue.city}`}
+          className="h-full w-full object-cover transition-transform duration-500 ease-out group-hover:scale-[1.03]"
+        />
 
-        {/* Gradient Overlay at Bottom */}
-        <div className="absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-ink/60 to-transparent pointer-events-none" />
-
-        {/* Floating Heart Button */}
-        <motion.button
-          onClick={(e) => onToggleFavorite(venue.id, e)}
-          whileTap={{ scale: 1.3 }}
-          transition={{ type: "spring", stiffness: 400, damping: 10 }}
-          className="absolute top-3 left-3 w-8 h-8 rounded-full bg-chalk/80 hover:bg-chalk backdrop-blur-sm flex items-center justify-center text-on-surface-variant hover:text-clay transition-colors hover:scale-110 z-10 shadow-sm ease-out"
-          aria-label="Add to favorites"
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggleFavorite(venue.id, e);
+          }}
+          onKeyDown={(e) => e.stopPropagation()}
+          className="absolute left-3 top-3 z-10 flex h-9 w-9 items-center justify-center rounded-full bg-chalk/90 shadow-sm hover:bg-chalk cursor-pointer"
+          aria-label={isFavorite ? 'Remove from saved venues' : 'Save venue'}
+          aria-pressed={isFavorite}
         >
-          <Heart
-            size={18}
-            className={`transition-colors duration-150 ${
-              isFavorite ? 'fill-clay text-clay' : 'text-on-surface-variant'
-            } ease-out`}
-          />
-        </motion.button>
+          <Heart size={17} className={isFavorite ? 'fill-clay text-clay' : 'text-on-surface-variant'} aria-hidden="true" />
+        </button>
 
-        {/* NEW Badge if created recently */}
         {isNew && (
-          <div className="absolute top-3 left-13 bg-pitch/90 backdrop-blur-md text-chalk px-2.5 py-1 rounded-full flex items-center gap-1 shadow-sm text-[10px] font-bold tracking-wider uppercase z-10">
-            <Sparkles size={11} className="text-marigold" />
-            <span>NEW</span>
-          </div>
+          <span className="absolute left-14 top-3.5 z-10 rounded-full bg-pitch/90 px-2.5 py-1 text-[11px] font-semibold text-chalk">
+            NEW
+          </span>
         )}
 
-        {/* Glassmorphic Rating Floating Chip */}
-        <motion.div 
-          initial={{ opacity: 0, scale: 0.95 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ delay: 0.3 }}
-          className="absolute top-3 right-3 bg-ink/90 backdrop-blur-md text-chalk px-2.5 py-1 rounded-full flex items-center gap-1 shadow-sm"
-        >
-          <Star size={12} className="fill-marigold text-marigold" />
-          <span className="font-sans text-xs font-bold text-chalk">{venue.rating.toFixed(1)}</span>
-          {venue.reviewCount > 0 && (
-            <span className="font-sans text-[10px] text-chalk/80">({venue.reviewCount})</span>
-          )}
-        </motion.div>
+        {venue.rating > 0 && (
+          <span className="absolute right-3 top-3 flex items-center gap-1 rounded-full bg-ink/85 px-2.5 py-1 text-chalk">
+            <Star size={12} className="fill-marigold text-marigold" aria-hidden="true" />
+            <span className="text-xs font-semibold">{venue.rating.toFixed(1)}</span>
+            {venue.reviewCount > 0 && <span className="text-[11px] text-chalk/80">({venue.reviewCount})</span>}
+          </span>
+        )}
 
-        {/* fully booked watermark overlay */}
         {venue.isFullyBookedToday && (
-          <div className="absolute inset-0 bg-ink/30 backdrop-blur-sm flex items-center justify-center z-20">
-            <span className="bg-chalk/80 backdrop-blur-lg text-pitch text-xs font-bold px-4 py-2 rounded-full shadow-2xl tracking-widest border border-chalk">
-              FULLY BOOKED TODAY
-            </span>
-          </div>
-        )}
-
-        {/* fast fill tag */}
-        {!venue.isFullyBookedToday && venue.isFastFill && (
-          <div className="absolute bottom-3 left-3 bg-gradient-to-r from-marigold to-[#e5952e] text-pitch text-[10px] uppercase font-bold tracking-widest px-2.5 py-1 rounded shadow-sm z-10">
-            FAST FILL
+          <div className="absolute inset-0 z-20 flex items-center justify-center bg-ink/40">
+            <span className="rounded-full bg-chalk px-4 py-2 text-xs font-semibold text-pitch">Fully booked today</span>
           </div>
         )}
       </div>
 
-      {/* Content description */}
-      <div className="p-4 flex flex-col flex-grow bg-chalk">
-        <div className="flex justify-between items-start gap-1 mb-1">
-          <h3 className="font-sans text-base font-semibold text-ink line-clamp-1 group-hover:text-pitch transition-colors ease-out">
-            {venue.displayName || venue.name}
-          </h3>
-          <motion.span 
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            className="font-sans text-base font-bold text-pitch shrink-0"
-          >
-            {venue.currency || '₹'}{venue.basePrice}
-            <span className="text-sm font-normal text-on-surface-variant">
-              /{venue.unitType === 'hour' ? 'hr' : venue.unitType === 'half_day' ? 'half-day' : 'day'}
-            </span>
-          </motion.span>
+      <div className="flex flex-grow flex-col p-4">
+        <div className="mb-1 flex items-start justify-between gap-2">
+          <h3 className="line-clamp-1 text-base font-semibold text-ink group-hover:text-pitch">{title}</h3>
+          <span className="shrink-0 text-base font-semibold text-pitch tabular">
+            {venue.currency || '₹'}
+            {priceFormat.format(venue.basePrice)}
+            <span className="text-sm font-normal text-on-surface-variant">/{UNIT_SHORT[venue.unitType] ?? 'booking'}</span>
+          </span>
         </div>
 
-        {venue.tagline && (
-          <p className="font-sans text-xs text-pitch/90 font-medium line-clamp-1 mb-1.5">
-            {venue.tagline}
-          </p>
-        )}
+        {venue.tagline && <p className="mb-1.5 line-clamp-1 text-[13px] text-on-surface-variant">{venue.tagline}</p>}
 
-        {/* physical location details */}
-        <p className="font-sans text-xs text-on-surface-variant mb-3 flex items-center gap-1">
-          <MapPin size={12} className="text-pitch/70" />
-          <span>
-            {venue.district}
-            {venue.distanceKm && ` • ${venue.distanceKm}km away`}
-          </span>
+        <p className="mb-3 flex items-center gap-1 text-[13px] text-on-surface-variant">
+          <MapPin size={13} className="shrink-0 text-pitch/70" aria-hidden="true" />
+          <span className="truncate">{place}</span>
         </p>
 
-        {/* tag values, sub categories & key amenities */}
-        <div className="mt-auto pt-3 border-t border-ink/5">
-          <div className="flex flex-wrap items-center gap-1.5 min-w-0">
+        <div className="mt-auto border-t border-ink/5 pt-3">
+          <div className="flex min-w-0 flex-wrap items-center gap-1.5">
             {venue.venueType && (
-              <motion.span 
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ delay: 0.1 }}
-                className="px-2.5 py-0.5 bg-mist text-ink rounded-full text-xs font-medium whitespace-nowrap shrink-0"
-              >
-                {venue.venueType}
-              </motion.span>
+              <span className="shrink-0 whitespace-nowrap rounded-full bg-mist px-2.5 py-0.5 text-xs font-medium text-ink">{venue.venueType}</span>
             )}
-            {venue.useCases && venue.useCases.length > 0 && (!venue.venueType || venue.useCases[0].trim().toLowerCase() !== venue.venueType.trim().toLowerCase()) && (
-              <motion.span
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ delay: 0.2 }}
-                className="px-2.5 py-0.5 bg-pitch/10 text-pitch rounded-full text-xs font-medium whitespace-nowrap truncate max-w-[140px]"
-                title={venue.useCases[0]}
-              >
-                {venue.useCases[0]}
-              </motion.span>
-            )}
-            <motion.span 
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ delay: 0.3 }}
-              className="px-2.5 py-0.5 bg-mist text-ink rounded-full text-xs font-medium whitespace-nowrap shrink-0"
-            >
-              {venue.capacityGroup} Cap
-            </motion.span>
-            {keyAmenities.map((amenity) => (
+            {showUseCase && (
               <span
-                key={amenity}
-                className="px-2 py-0.5 bg-mist/60 text-on-surface-variant rounded-full text-[11px] font-normal truncate max-w-[110px]"
-                title={amenity}
+                className="max-w-[140px] truncate whitespace-nowrap rounded-full bg-pitch/10 px-2.5 py-0.5 text-xs font-medium text-pitch"
+                title={venue.useCases![0]}
               >
-                {amenity}
+                {venue.useCases![0]}
               </span>
-            ))}
+            )}
+            <span className="shrink-0 whitespace-nowrap rounded-full bg-mist px-2.5 py-0.5 text-xs font-medium text-ink">{capacityLabel}</span>
           </div>
         </div>
       </div>
-    </motion.div>
+    </article>
   );
 }

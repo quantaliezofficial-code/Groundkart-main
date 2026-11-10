@@ -166,7 +166,7 @@ export default function GroundSelect({
           <>
             <div className="flex items-center gap-1.5 mb-1.5 w-full">
               {labelIcon}
-              <span className="font-sans text-[11px] font-semibold text-pitch/80 uppercase tracking-wide">{label}</span>
+              <span className="font-sans text-[13px] font-semibold text-pitch/70">{label}</span>
             </div>
             <div className="flex items-center justify-between w-full">
               <div className="flex items-center gap-2 truncate">
@@ -220,7 +220,7 @@ export default function GroundSelect({
                     return (
                       <li
                         key={`group-${option.label}-${index}`}
-                        className="px-3.5 py-2 mt-2 first:mt-0 font-sans text-[11px] font-bold text-ink/40 uppercase tracking-wider select-none pointer-events-none"
+                        className="px-3.5 py-2 mt-2 first:mt-0 font-sans text-xs font-semibold text-ink/50 select-none pointer-events-none"
                       >
                         {option.label}
                       </li>

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { compressImage } from '../../../lib/imageCompress';
 import { ownerApi } from '../../../lib/api/owner';
 import { ApiError } from '../../../lib/api/client';
 import type { VenueImage } from '../../../lib/api/types';
@@ -36,6 +37,7 @@ export interface UploadItem {
 const ALLOWED_MIME_TYPES = new Set([
   'image/jpeg',
   'image/png',
+  'image/webp',
   'video/mp4',
   'video/webm',
 ]);
@@ -199,7 +201,7 @@ export default function MediaStep({ venueId, onComplete, onPhotoCountChange }: P
   // Validate a file before sending
   const validateFile = (file: File, duration?: number | null): string | null => {
     if (!ALLOWED_MIME_TYPES.has(file.type)) {
-      return `"${file.name}": Unsupported format (${file.type || 'unknown'}). Allowed formats: JPEG, PNG, MP4, WebM.`;
+      return `"${file.name}": Unsupported format (${file.type || 'unknown'}). Allowed formats: JPEG, PNG, WebP, MP4, WebM.`;
     }
     const isVideo = file.type.startsWith('video/');
     if (!isVideo && file.size > MAX_IMAGE_SIZE) {
@@ -230,7 +232,10 @@ export default function MediaStep({ venueId, onComplete, onPhotoCountChange }: P
     const newUploadItems: UploadItem[] = [];
     const validItems: { item: UploadItem; file: File; duration?: number }[] = [];
 
-    for (const file of files) {
+    for (const original of files) {
+      // Photos are resized and re-encoded in the browser first, so a large
+      // phone photo uploads quickly and fits under the size limit.
+      const file = original.type.startsWith('image/') ? await compressImage(original) : original;
       const isVideo = file.type.startsWith('video/');
       let duration: number | null = null;
       if (isVideo && ALLOWED_MIME_TYPES.has(file.type)) {
@@ -581,7 +586,7 @@ export default function MediaStep({ venueId, onComplete, onPhotoCountChange }: P
             type="file"
             className="hidden"
             multiple
-            accept="image/jpeg,image/png,video/mp4,video/webm"
+            accept="image/jpeg,image/png,image/webp,video/mp4,video/webm"
             onChange={handleFileSelect}
             disabled={isUploading || photoCount >= 15}
           />

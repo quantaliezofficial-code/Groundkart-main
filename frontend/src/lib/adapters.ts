@@ -39,8 +39,9 @@ function categoryLabel(apiCategory: string, venueType?: string | null, name?: st
   return CATEGORY_LABELS[apiCategory] ?? 'Turfs';
 }
 
-const PLACEHOLDER_IMAGE =
-  'https://images.unsplash.com/photo-1461896836934-ffe607ba8211?q=80&w=1200&auto=format&fit=crop';
+// Shown only for a listing with no photo yet. Served from our own origin
+// rather than hot-linked from a stock-photo CDN.
+const PLACEHOLDER_IMAGE = '/img/occasions/dusk-sports.webp';
 
 function isVideoMedia(item: { media_type?: string; url?: string }): boolean {
   if (item.media_type === 'video') return true;
@@ -93,7 +94,9 @@ export function adaptVenue(v: ApiVenue): Venue {
     // to venues.avg_rating") — 0 is the honest real value, not a
     // placeholder standing in for missing data.
     rating: Number(v.avg_rating),
-    reviewCount: typeof v.review_count === 'number' ? v.review_count : (Number(v.avg_rating) > 0 ? 3 : 0),
+    // Only a real count from the API. (This used to fall back to a made-up
+    // "3" whenever a venue had a rating but no count.)
+    reviewCount: typeof v.review_count === 'number' ? v.review_count : 0,
     category: categoryLabel(v.category || '', (v as any).venue_type_name || (v as any).venue_type, v.name),
     venueType: (v as any).venue_type_name || (v as any).venue_type || v.category,
     description: v.description ?? '',

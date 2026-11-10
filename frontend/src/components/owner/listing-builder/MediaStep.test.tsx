@@ -55,7 +55,7 @@ describe('MediaStep component', () => {
 
     const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
     expect(fileInput).toBeInTheDocument();
-    expect(fileInput.accept).toBe('image/jpeg,image/png,video/mp4,video/webm');
+    expect(fileInput.accept).toBe('image/jpeg,image/png,image/webp,video/mp4,video/webm');
   });
 
   it('loads existing media on mount and reports photo count excluding videos', async () => {

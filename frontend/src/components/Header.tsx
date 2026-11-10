@@ -280,6 +280,8 @@ export default function Header({
                     window.dispatchEvent(new CustomEvent('navigate-admin-tab', { detail: 'Overview' }));
                   } else if (user?.role === 'owner') {
                     window.dispatchEvent(new CustomEvent('navigate-owner-tab', { detail: 'Listings' }));
+                  } else if (user?.role === 'broker') {
+                    onListVenue();
                   } else {
                     onNavigate('home');
                   }
@@ -287,14 +289,13 @@ export default function Header({
                 className="flex items-center flex-shrink-0 cursor-pointer"
                 id="logo"
               >
-                <img src="/logo-full.png" alt="GroundKart" className="h-14 sm:h-16 w-auto object-contain py-1" />
+                <img src="/logo-full.webp" alt="GroundKart" width={180} height={60} className="h-14 sm:h-16 w-auto object-contain py-1" />
               </motion.button>
 
               {/* ── Center search ── */}
               {currentView !== 'detail' && user?.role !== 'owner' && (
-                <motion.div 
-                  layout
-                  className={`relative hidden md:block mx-4 lg:mx-8 w-[280px] lg:w-[320px] transition duration-200 ${isSearchFocused ? 'w-[320px] lg:w-[360px]' : ''} ease-out`}
+                <motion.div
+                  className="relative hidden md:block mx-4 lg:mx-8 w-[280px] lg:w-[340px]"
                 >
                   <div className={`relative rounded-full transition duration-200 ${isSearchFocused ? 'ring-2 ring-marigold/40 bg-white/15' : 'bg-white/10 hover:bg-white/[0.13]'} ease-out`}>
                     <span className="absolute left-4 top-1/2 -translate-y-1/2 text-chalk/40">
@@ -317,7 +318,7 @@ export default function Header({
               <div className="flex items-center gap-1 sm:gap-1.5">
                 {/* Desktop nav links */}
                 <nav className="hidden lg:flex items-center gap-0.5 mr-3 relative">
-                  {(user?.role === 'admin' || user?.role === 'owner' ? [] : NAV_ITEMS).map(({ label, view, requireAuth }) => {
+                  {(user?.role === 'admin' || user?.role === 'owner' || user?.role === 'broker' ? [] : NAV_ITEMS).map(({ label, view, requireAuth }) => {
                     const isActive = currentView === view;
                     return (
                       <button
@@ -351,7 +352,7 @@ export default function Header({
                     className="hidden sm:flex items-center gap-1.5 bg-marigold hover:bg-[#e5952e] text-pitch px-4 py-[7px] rounded-full text-[13px] font-semibold active:scale-[0.97] transition cursor-pointer shadow-[0_2px_8px_rgba(242,163,59,0.25)] ease-out"
                   >
                     <PlusCircle size={14} strokeWidth={2.5} />
-                    <span>{user?.role === 'owner' || user?.role === 'admin' ? 'Dashboard' : 'List a Venue'}</span>
+                    <span>{user?.role === 'owner' || user?.role === 'admin' || user?.role === 'broker' ? 'Dashboard' : 'List your venue'}</span>
                   </button>
                 )}
 
@@ -384,7 +385,7 @@ export default function Header({
                           {/* User info */}
                           <div className="px-4 py-3 border-b border-ink/5">
                             <p className="text-sm font-semibold text-ink truncate">{user.name}</p>
-                            <p className="text-xs text-on-surface-variant truncate">{user.email}</p>
+                            <p className="text-xs text-on-surface-variant truncate">{user.email || user.phone}</p>
                           </div>
                           {user.role === 'admin' ? (
                             <button
@@ -397,6 +398,13 @@ export default function Header({
                               className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-[13px] text-ink hover:bg-mist transition-colors ease-out"
                             >
                               <ShieldCheck size={15} className="text-on-surface-variant" /> Approval Queue
+                            </button>
+                          ) : user.role === 'broker' ? (
+                            <button
+                              onClick={() => { setShowProfileMenu(false); onListVenue(); }}
+                              className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-[13px] text-ink hover:bg-mist transition-colors ease-out"
+                            >
+                              <ShieldCheck size={15} className="text-on-surface-variant" /> Partner dashboard
                             </button>
                           ) : user.role === 'owner' ? (
                             <button
@@ -481,7 +489,7 @@ export default function Header({
                     />
                   </div>
                 )}
-                {(user?.role === 'admin' || user?.role === 'owner' ? [] : NAV_ITEMS).map(({ label, view, requireAuth }) => (
+                {(user?.role === 'admin' || user?.role === 'owner' || user?.role === 'broker' ? [] : NAV_ITEMS).map(({ label, view, requireAuth }) => (
                   <button
                     key={view}
                     onClick={() => {
@@ -504,7 +512,7 @@ export default function Header({
                     className="flex sm:hidden items-center gap-2 w-full bg-marigold hover:bg-[#e5952e] text-pitch px-4 py-3 rounded-xl text-sm font-semibold transition mt-3 ease-out"
                   >
                     <PlusCircle size={16} />
-                    <span>{user?.role === 'owner' || user?.role === 'admin' ? 'Dashboard' : 'List a Venue'}</span>
+                    <span>{user?.role === 'owner' || user?.role === 'admin' || user?.role === 'broker' ? 'Dashboard' : 'List your venue'}</span>
                   </button>
                 )}
               </div>

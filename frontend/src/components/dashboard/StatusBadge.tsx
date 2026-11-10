@@ -33,6 +33,29 @@ const STATUS_BADGE_STYLE: Record<string, string> = {
   cancelled: 'bg-clay/10 text-clay border-clay/20',
   
   draft: 'bg-surface-container-high text-on-surface-variant border-surface-container-highest',
+  archived: 'bg-surface-container-high text-on-surface-variant border-surface-container-highest',
+
+  // Money states (commissions, payouts, payments)
+  paid: 'bg-primary-container/10 text-primary-container border-primary-container/20',
+  received: 'bg-primary-container/10 text-primary-container border-primary-container/20',
+  payable: 'bg-info/10 text-info border-info/25',
+  awaiting: 'bg-marigold/10 text-pitch border-marigold/30',
+  refunded: 'bg-clay/10 text-clay border-clay/20',
+  partly_refunded: 'bg-clay/10 text-clay border-clay/20',
+  reversed: 'bg-clay/10 text-clay border-clay/20',
+  adjustment: 'bg-clay/10 text-clay border-clay/20',
+  paused: 'bg-surface-container-high text-on-surface-variant border-surface-container-highest',
+  expired: 'bg-surface-container-high text-on-surface-variant border-surface-container-highest',
+};
+
+const STATUS_LABEL: Record<string, string> = {
+  pending_review: 'In review',
+  pending_payment: 'Awaiting payment',
+  awaiting: 'Awaiting payment',
+  received_not_eligible: 'Paid before referral',
+  not_received: 'Not paid',
+  partly_refunded: 'Partly refunded',
+  under_admin_review: 'Under review',
 };
 
 export function StatusBadge({ status, className = '' }: StatusBadgeProps) {
@@ -40,8 +63,8 @@ export function StatusBadge({ status, className = '' }: StatusBadgeProps) {
   const style = STATUS_BADGE_STYLE[normalizedStatus] ?? 'bg-surface-container-high text-on-surface-variant border-surface-container-highest';
   
   return (
-    <span className={`inline-flex items-center rounded-full border px-2 py-0.5 font-sans text-xs font-medium capitalize tracking-wide ${style} ${className}`}>
-      {status.replace(/_/g, ' ')}
+    <span className={`inline-flex items-center whitespace-nowrap rounded-full border px-2 py-0.5 font-sans text-xs font-medium ${style} ${className}`}>
+      {STATUS_LABEL[normalizedStatus] ?? (normalizedStatus.charAt(0).toUpperCase() + normalizedStatus.slice(1)).replace(/_/g, ' ')}
     </span>
   );
 }

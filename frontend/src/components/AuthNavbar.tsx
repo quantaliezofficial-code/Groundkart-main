@@ -17,7 +17,7 @@ export default function AuthNavbar({ logoOnly = false }: AuthNavbarProps) {
           <div className="flex items-center justify-between h-[72px]">
             {/* ── Brand Logo (Always visible) ── */}
             <Link to="/" className="flex items-center flex-shrink-0 cursor-pointer" id="logo">
-              <img src="/logo-full.png" alt="GroundKart" className="h-14 sm:h-16 w-auto object-contain py-1" />
+              <img src="/logo-full.webp" alt="GroundKart" className="h-14 sm:h-16 w-auto object-contain py-1" />
             </Link>
 
             {/* If logoOnly is false, render search, nav items, and CTAs */}
