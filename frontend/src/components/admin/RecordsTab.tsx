@@ -10,7 +10,7 @@ import {
 import { useDebounce } from '../../hooks/useDebounce';
 import { count, dateOnly, dateTime, errorText, humanize, money, percent, slotLabel } from '../../lib/format';
 import { StatusBadge } from '../dashboard';
-import { Button, DataTable, ExportButton, Modal, Notice, Panel, Tabs, inputClass, type Column } from '../dashboard/kit';
+import { Button, DataTable, ExportButton, Modal, Notice, Panel, Tabs, inputClass, inlineInputClass, type Column } from '../dashboard/kit';
 
 /**
  * Records & exports: the operational register.
@@ -203,7 +203,7 @@ function BookingRegister() {
           <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant" aria-hidden="true" />
           <input className={`${inputClass} pl-9`} placeholder="Reference, venue, customer or phone" value={search} onChange={(e) => setSearch(e.target.value)} />
         </label>
-        <select aria-label="Status" className={`${inputClass} w-auto`} value={status} onChange={(e) => setStatus(e.target.value)}>
+        <select aria-label="Status" className={inlineInputClass} value={status} onChange={(e) => setStatus(e.target.value)}>
           <option value="">Any status</option>
           {BOOKING_STATUSES.map((s) => (
             <option key={s} value={s}>
@@ -211,12 +211,12 @@ function BookingRegister() {
             </option>
           ))}
         </select>
-        <select aria-label="Payment" className={`${inputClass} w-auto`} value={payment} onChange={(e) => setPayment(e.target.value as typeof payment)}>
+        <select aria-label="Payment" className={inlineInputClass} value={payment} onChange={(e) => setPayment(e.target.value as typeof payment)}>
           <option value="">Paid or not</option>
           <option value="received">Payment received</option>
           <option value="awaiting">Awaiting payment</option>
         </select>
-        <select aria-label="Referral partner" className={`${inputClass} w-auto`} value={brokerId} onChange={(e) => setBrokerId(e.target.value)}>
+        <select aria-label="Referral partner" className={inlineInputClass} value={brokerId} onChange={(e) => setBrokerId(e.target.value)}>
           <option value="">Any partner</option>
           {(brokers.data ?? []).map((b) => (
             <option key={b.id} value={b.id}>
@@ -224,12 +224,12 @@ function BookingRegister() {
             </option>
           ))}
         </select>
-        <select aria-label="Date basis" className={`${inputClass} w-auto`} value={dateBasis} onChange={(e) => setDateBasis(e.target.value as 'booked' | 'event')}>
+        <select aria-label="Date basis" className={inlineInputClass} value={dateBasis} onChange={(e) => setDateBasis(e.target.value as 'booked' | 'event')}>
           <option value="booked">Booked between</option>
           <option value="event">Event between</option>
         </select>
-        <input aria-label="From" type="date" className={`${inputClass} w-auto`} value={from} onChange={(e) => setFrom(e.target.value)} />
-        <input aria-label="To" type="date" className={`${inputClass} w-auto`} value={to} onChange={(e) => setTo(e.target.value)} />
+        <input aria-label="From" type="date" className={inlineInputClass} value={from} onChange={(e) => setFrom(e.target.value)} />
+        <input aria-label="To" type="date" className={inlineInputClass} value={to} onChange={(e) => setTo(e.target.value)} />
       </FilterBar>
       {rows.isError ? (
         <div className="p-5">
@@ -399,7 +399,7 @@ function VenueRegister() {
           <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant" aria-hidden="true" />
           <input className={`${inputClass} pl-9`} placeholder="Venue, city, owner or phone" value={search} onChange={(e) => setSearch(e.target.value)} />
         </label>
-        <select aria-label="Status" className={`${inputClass} w-auto`} value={status} onChange={(e) => setStatus(e.target.value)}>
+        <select aria-label="Status" className={inlineInputClass} value={status} onChange={(e) => setStatus(e.target.value)}>
           <option value="">Any status</option>
           {VENUE_STATUSES.map((s) => (
             <option key={s} value={s}>
@@ -407,12 +407,12 @@ function VenueRegister() {
             </option>
           ))}
         </select>
-        <select aria-label="Referral" className={`${inputClass} w-auto`} value={referred} onChange={(e) => setReferred(e.target.value as typeof referred)}>
+        <select aria-label="Referral" className={inlineInputClass} value={referred} onChange={(e) => setReferred(e.target.value as typeof referred)}>
           <option value="">Referred or not</option>
           <option value="yes">Via a partner</option>
           <option value="no">Direct</option>
         </select>
-        <select aria-label="Partner" className={`${inputClass} w-auto`} value={brokerId} onChange={(e) => setBrokerId(e.target.value)}>
+        <select aria-label="Partner" className={inlineInputClass} value={brokerId} onChange={(e) => setBrokerId(e.target.value)}>
           <option value="">Any partner</option>
           {(brokers.data ?? []).map((b) => (
             <option key={b.id} value={b.id}>
@@ -420,8 +420,8 @@ function VenueRegister() {
             </option>
           ))}
         </select>
-        <input aria-label="Listed from" type="date" className={`${inputClass} w-auto`} value={from} onChange={(e) => setFrom(e.target.value)} />
-        <input aria-label="Listed to" type="date" className={`${inputClass} w-auto`} value={to} onChange={(e) => setTo(e.target.value)} />
+        <input aria-label="Listed from" type="date" className={inlineInputClass} value={from} onChange={(e) => setFrom(e.target.value)} />
+        <input aria-label="Listed to" type="date" className={inlineInputClass} value={to} onChange={(e) => setTo(e.target.value)} />
       </FilterBar>
       {rows.isError ? (
         <div className="p-5">
@@ -484,7 +484,7 @@ export function VenueHistoryModal({ venue, onClose }: { venue: { id: string; nam
           Applies to payments confirmed from now on. Commission already recorded stays with whoever earned it.
         </p>
         <div className="mt-3 flex flex-wrap gap-2">
-          <select aria-label="Referral partner" className={`${inputClass} w-auto min-w-[220px]`} value={brokerId} onChange={(e) => setBrokerId(e.target.value)}>
+          <select aria-label="Referral partner" className={`${inlineInputClass} min-w-[220px]`} value={brokerId} onChange={(e) => setBrokerId(e.target.value)}>
             <option value="">No partner</option>
             {(brokers.data ?? []).map((b) => (
               <option key={b.id} value={b.id}>
@@ -525,8 +525,8 @@ function ExportsList() {
       description="CSV files open in Excel and Google Sheets. Amounts are in rupees, times in IST. Leave the dates empty for everything."
       actions={
         <>
-          <input aria-label="From" type="date" className={`${inputClass} w-auto`} value={from} onChange={(e) => setFrom(e.target.value)} />
-          <input aria-label="To" type="date" className={`${inputClass} w-auto`} value={to} onChange={(e) => setTo(e.target.value)} />
+          <input aria-label="From" type="date" className={inlineInputClass} value={from} onChange={(e) => setFrom(e.target.value)} />
+          <input aria-label="To" type="date" className={inlineInputClass} value={to} onChange={(e) => setTo(e.target.value)} />
         </>
       }
       padded={false}

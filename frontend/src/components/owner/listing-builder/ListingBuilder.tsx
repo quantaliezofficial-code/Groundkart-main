@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useQueryClient, useQuery } from '@tanstack/react-query';
 import { ownerApi } from '../../../lib/api/owner';
+import { platformApi, type VenueReferral } from '../../../lib/api/platform';
+import { REFERRAL_STORAGE_KEY, storedReferralCode } from './ReferralCodeField';
 import { api, ApiError } from '../../../lib/api/client';
 import { VenueCreateRequest, VenueUpdateRequest, UnitType } from '../../../lib/api/types';
 import { useToast } from '../../ui/Toast';
@@ -217,8 +219,30 @@ export default function ListingBuilder({ venueId, onClose, onCancel, onComplete 
   const [step, setStep] = useState(initialData.step);
   const [isLoadingVenue, setIsLoadingVenue] = useState(Boolean(venueId));
   const [rejectionReason, setRejectionReason] = useState<string | null>(null);
-  const [formData, setFormData] = useState<Partial<ListingFormData>>(initialData.formData);
+  const [formData, setFormData] = useState<Partial<ListingFormData>>(() =>
+    initialData.formData.referral_code || venueId
+      ? initialData.formData
+      : { ...initialData.formData, referral_code: storedReferralCode() || undefined },
+  );
   const [createdVenueId, setCreatedVenueId] = useState<string | null>(initialData.createdVenueId);
+  // For an existing listing: has a partner already been attached?
+  const [referral, setReferral] = useState<VenueReferral | null>(null);
+  useEffect(() => {
+    const id = createdVenueId;
+    if (!id) {
+      setReferral(null);
+      return;
+    }
+    let cancelled = false;
+    platformApi
+      .getVenueReferral(id)
+      .then((r) => !cancelled && setReferral(r))
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [createdVenueId]);
   const [mediaPhotoCount, setMediaPhotoCount] = useState<number>(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submissionProblems, setSubmissionProblems] = useState<string[]>([]);
@@ -513,6 +537,24 @@ export default function ListingBuilder({ venueId, onClose, onCancel, onComplete 
     // Flush any pending debounced changes before navigation
     await flushAutosave();
 
+    // A listing saved before a code was entered: attach it now. The owner
+    // can do this once; after that only an admin can change it.
+    const pendingCode = formData.referral_code?.trim();
+    if (step === 1 && createdVenueId && pendingCode && !referral?.locked) {
+      try {
+        const applied = await platformApi.applyVenueReferral(createdVenueId, pendingCode);
+        setReferral(applied);
+        try {
+          localStorage.removeItem(REFERRAL_STORAGE_KEY);
+        } catch {
+          /* ignore */
+        }
+      } catch (err: any) {
+        toast.error(err instanceof ApiError ? err.detail : 'Could not apply the referral code.');
+        return;
+      }
+    }
+
     // 2. Create the venue draft on Step 4 -> Step 5 transition
     if (step === 4 && !createdVenueId) {
       try {
@@ -545,9 +587,17 @@ export default function ListingBuilder({ venueId, onClose, onCancel, onComplete 
           content_blocks: formData.content_blocks,
           status: 'draft',
           save_as_draft: true,
+          referral_code: formData.referral_code?.trim() || undefined,
         };
 
         const res = await ownerApi.createVenue(draftPayload);
+        if (draftPayload.referral_code) {
+          try {
+            localStorage.removeItem(REFERRAL_STORAGE_KEY);
+          } catch {
+            /* ignore */
+          }
+        }
         setCreatedVenueId(res.id);
         setSaveStatus('saved');
 
@@ -779,7 +829,13 @@ export default function ListingBuilder({ venueId, onClose, onCancel, onComplete 
             </div>
           )}
 
-          {step === 1 && <IdentityStep data={formData} update={updateForm} />}
+          {step === 1 && (
+            <IdentityStep
+              data={formData}
+              update={updateForm}
+              referralPartner={referral?.locked ? referral.partner_name || referral.referral_code : null}
+            />
+          )}
           {step === 2 && <CategoryStep data={formData} update={updateForm} />}
           {step === 3 && <PurposeDetailsStep data={formData} update={updateForm} venueId={createdVenueId} />}
           {step === 4 && <LocationStep data={formData} update={updateForm} />}

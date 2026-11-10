@@ -27,6 +27,7 @@ import {
   Stat,
   Tabs,
   inputClass,
+  inlineInputClass,
   type Column,
 } from '../dashboard/kit';
 
@@ -155,7 +156,7 @@ export default function PartnersTab() {
               onChange={(e) => setSearch(e.target.value)}
             />
           </label>
-          <select aria-label="Status" className={`${inputClass} w-auto`} value={status} onChange={(e) => setStatus(e.target.value)}>
+          <select aria-label="Status" className={inlineInputClass} value={status} onChange={(e) => setStatus(e.target.value)}>
             <option value="">All statuses</option>
             <option value="active">Active</option>
             <option value="paused">Paused</option>

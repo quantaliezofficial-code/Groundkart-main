@@ -23,6 +23,7 @@ import {
   Panel,
   Stat,
   inputClass,
+  inlineInputClass,
   type Column,
 } from '../dashboard/kit';
 
@@ -361,7 +362,7 @@ function BookingsTab({ rows, loading, venues }: { rows: ReferredBooking[]; loadi
       title="Bookings"
       actions={
         <>
-          <select aria-label="Venue" className={`${inputClass} w-auto`} value={venueId} onChange={(e) => setVenueId(e.target.value)}>
+          <select aria-label="Venue" className={inlineInputClass} value={venueId} onChange={(e) => setVenueId(e.target.value)}>
             <option value="">All venues</option>
             {venues.map((v) => (
               <option key={v.id} value={v.id}>
@@ -369,7 +370,7 @@ function BookingsTab({ rows, loading, venues }: { rows: ReferredBooking[]; loadi
               </option>
             ))}
           </select>
-          <select aria-label="Payment" className={`${inputClass} w-auto`} value={payment} onChange={(e) => setPayment(e.target.value)}>
+          <select aria-label="Payment" className={inlineInputClass} value={payment} onChange={(e) => setPayment(e.target.value)}>
             <option value="">Any payment status</option>
             <option value="received">Paid</option>
             <option value="awaiting">Awaiting payment</option>

@@ -62,8 +62,11 @@ export function perUnit(unitType: string | null | undefined): string {
 }
 
 /** snake_case / kebab-case -> "Sentence case" */
+const ACRONYMS: Record<string, string> = { upi: 'UPI', ifsc: 'IFSC', gst: 'GST', id: 'ID' };
+
 export function humanize(value: string | null | undefined): string {
   if (!value) return '—';
+  if (ACRONYMS[value.toLowerCase()]) return ACRONYMS[value.toLowerCase()];
   const text = value.replace(/[_-]+/g, ' ').trim();
   return text.charAt(0).toUpperCase() + text.slice(1);
 }

@@ -1,10 +1,13 @@
 import React, { useState } from 'react';
 import { ListingFormData } from './ListingBuilder';
 import { Sparkles, Building, Info, ChevronDown, ChevronUp } from 'lucide-react';
+import ReferralCodeField from './ReferralCodeField';
 
 interface Props {
   data: Partial<ListingFormData>;
   update: (data: Partial<ListingFormData>) => void;
+  /** Set once the listing exists and already has a partner attached. */
+  referralPartner?: string | null;
 }
 
 const SPACE_ENVIRONMENTS = [
@@ -14,7 +17,7 @@ const SPACE_ENVIRONMENTS = [
   { id: 'covered', label: 'Covered / Semi-Outdoor', desc: 'Canopy, pavilion, or semi-covered ground' },
 ];
 
-export default function IdentityStep({ data, update }: Props) {
+export default function IdentityStep({ data, update, referralPartner }: Props) {
   const [showInternalName, setShowInternalName] = useState(
     Boolean((data.name && data.name !== data.display_name) || (data as any).show_internal_name)
   );
@@ -131,6 +134,12 @@ export default function IdentityStep({ data, update }: Props) {
             </span>
           </div>
         </div>
+
+        <ReferralCodeField
+          value={data.referral_code || ''}
+          onChange={(code) => update({ referral_code: code })}
+          lockedPartner={referralPartner}
+        />
 
         <div className="pt-2 border-t border-surface-container">
           <button

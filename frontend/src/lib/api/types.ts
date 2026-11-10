@@ -122,6 +122,8 @@ export interface VenueCreateRequest {
   content_blocks?: Omit<VenueContentBlock, 'id' | 'venue_id'>[];
   status?: VenueStatus;
   save_as_draft?: boolean;
+  /** Optional referral partner code. */
+  referral_code?: string;
 }
 
 // Every field optional — PATCH semantics (backend/app/schemas/catalog.py's

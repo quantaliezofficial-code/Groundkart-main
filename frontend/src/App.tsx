@@ -13,6 +13,7 @@ function ScrollReveal({ children, className = '' }: { children: React.ReactNode;
 }
 import HomePage, { HOME_FAQ } from './components/home/HomePage';
 import SiteFooter from './components/SiteFooter';
+import SearchTopBanner from './components/SearchTopBanner';
 import VenueCard from './components/VenueCard';
 import FiltersSidebar, { matchesAmenity, AMENITY_FILTER_ITEMS, SORT_OPTIONS } from './components/FiltersSidebar';
 import type { VenueSortOption } from './types';
@@ -380,6 +381,20 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem('groundkart_active_role', activeRole);
   }, [activeRole]);
+
+  // A partner's listing link carries their code (/owner?ref=GK-ABC-1234).
+  // Keep it until the owner's first listing is saved, even if they sign up
+  // or log in along the way.
+  useEffect(() => {
+    const ref = new URLSearchParams(location.search).get('ref');
+    if (ref && /^[A-Za-z0-9-]{4,24}$/.test(ref)) {
+      try {
+        localStorage.setItem('groundkart_referral_code', ref.toUpperCase());
+      } catch {
+        /* storage unavailable */
+      }
+    }
+  }, [location.search]);
 
   // Synchronize URL path to state views
   useEffect(() => {
@@ -1096,6 +1111,7 @@ export default function App() {
                 {/* Catalog items */}
                 <section className="flex-1 flex flex-col gap-5 w-full overflow-hidden">
                   
+                  <SearchTopBanner onNavigate={(path) => navigate(path)} />
                   {/* Context Header */}
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-1">
                     <div>

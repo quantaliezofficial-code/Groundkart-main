@@ -96,8 +96,11 @@ export function Field({
   );
 }
 
-export const inputClass =
-  'w-full rounded-lg border border-surface-container-highest bg-chalk px-3 py-2 text-[15px] text-ink placeholder:text-on-surface-variant/60 focus:border-pitch focus:outline-none focus:ring-2 focus:ring-pitch/15 disabled:bg-surface-container-low';
+const inputBase =
+  'rounded-lg border border-surface-container-highest bg-chalk px-3 py-2 text-[15px] text-ink placeholder:text-on-surface-variant/60 focus:border-pitch focus:outline-none focus:ring-2 focus:ring-pitch/15 disabled:bg-surface-container-low';
+export const inputClass = `w-full ${inputBase}`;
+/** For filter bars: sizes to its content instead of filling the row. */
+export const inlineInputClass = `w-auto max-w-full ${inputBase}`;
 
 export function Notice({ tone = 'info', children }: { tone?: 'info' | 'error' | 'success'; children: React.ReactNode }) {
   const style =
