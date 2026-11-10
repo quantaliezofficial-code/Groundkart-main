@@ -30,8 +30,11 @@ class Base(DeclarativeBase):
     }
 
 
+# 'broker' added for referral partners (see i1_partners_team_banners). A
+# super admin is deliberately NOT a role: it is users.is_super_admin on top
+# of role='admin', so every existing admin check keeps working unchanged.
 UserRole = PGEnum(
-    "customer", "owner", "admin",
+    "customer", "owner", "admin", "broker",
     name="user_role", create_type=False,
 )
 

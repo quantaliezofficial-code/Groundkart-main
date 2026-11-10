@@ -67,6 +67,7 @@ async def update_system_config(
             "cancellation_partial_refund_percent": config.cancellation_partial_refund_percent,
             "platform_commission_percent": config.platform_commission_percent,
             "payout_holdback_days": config.payout_holdback_days,
+            "default_broker_commission_percent": str(config.default_broker_commission_percent),
         }
 
         new_full = updates.get("cancellation_full_refund_hours") if updates.get("cancellation_full_refund_hours") is not None else config.cancellation_full_refund_hours
@@ -91,6 +92,7 @@ async def update_system_config(
             "cancellation_partial_refund_percent": config.cancellation_partial_refund_percent,
             "platform_commission_percent": config.platform_commission_percent,
             "payout_holdback_days": config.payout_holdback_days,
+            "default_broker_commission_percent": str(config.default_broker_commission_percent),
         }
 
         session.add(

@@ -22,7 +22,15 @@ from app.config import settings
 
 MAX_UPLOAD_SIZE_BYTES = 10 * 1024 * 1024  # 10MB
 MAX_VIDEO_UPLOAD_SIZE_BYTES = 100 * 1024 * 1024 # 100MB
-ALLOWED_CONTENT_TYPES = {"application/pdf", "image/jpeg", "image/png", "video/mp4", "video/webm"}
+ALLOWED_CONTENT_TYPES = {"application/pdf", "image/jpeg", "image/png", "image/webp", "video/mp4", "video/webm"}
+_EXTENSIONS = {
+    "application/pdf": "pdf",
+    "image/jpeg": "jpg",
+    "image/png": "png",
+    "image/webp": "webp",
+    "video/mp4": "mp4",
+    "video/webm": "webm",
+}
 
 
 class UnsupportedFileError(Exception):
@@ -60,7 +68,7 @@ class LocalFileStorage:
 
     async def save(self, content: bytes, content_type: str, key_prefix: str) -> tuple[str, str]:
         _validate(content, content_type)
-        ext = {"application/pdf": "pdf", "image/jpeg": "jpg", "image/png": "png", "video/mp4": "mp4", "video/webm": "webm"}[content_type]
+        ext = _EXTENSIONS[content_type]
         key = f"{key_prefix}/{uuid.uuid4().hex}.{ext}"
         path = self.base_dir / key
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -82,6 +90,7 @@ class LocalFileStorage:
             ".jpg": "image/jpeg",
             ".jpeg": "image/jpeg",
             ".png": "image/png",
+            ".webp": "image/webp",
             ".mp4": "video/mp4",
             ".webm": "video/webm",
         }
@@ -110,7 +119,7 @@ class S3FileStorage:
 
     async def save(self, content: bytes, content_type: str, key_prefix: str) -> tuple[str, str]:
         _validate(content, content_type)
-        ext = {"application/pdf": "pdf", "image/jpeg": "jpg", "image/png": "png", "video/mp4": "mp4", "video/webm": "webm"}[content_type]
+        ext = _EXTENSIONS[content_type]
         key = f"{key_prefix}/{uuid.uuid4().hex}.{ext}"
 
         async with self.session.client(
@@ -125,6 +134,9 @@ class S3FileStorage:
                 Key=key,
                 Body=content,
                 ContentType=content_type,
+                # Keys are random and never reused, so a stored object can
+                # be cached by browsers and CDNs indefinitely.
+                **({} if self.is_private else {"CacheControl": "public, max-age=31536000, immutable"}),
             )
             if self.is_private:
                 url = ""

@@ -534,6 +534,12 @@ async def confirm_booking_by_admin(
         from app.modules.ledger import service as ledger_service
         await ledger_service.record_payment_confirmation(session, payment, booking, admin_id)
 
+        # Referral partner commission, in the SAME transaction as the
+        # payment: a confirmed payment and the commission it earns commit
+        # or roll back together. No-op when the venue has no partner.
+        from app.modules.partners import service as partners_service
+        await partners_service.record_commission_for_payment_in_tx(session, booking, payment)
+
         _apply_payment_confirmation(session, booking, config, admin_id, "admin")
 
         session.add(
@@ -782,6 +788,9 @@ async def _apply_customer_cancellation(
                 session.add(refund_obj)
                 await session.flush()
                 await ledger_service.record_refund(session, refund_obj, payment, actor_id)
+                # Take back the same share of any referral commission.
+                from app.modules.partners import service as partners_service
+                await partners_service.record_refund_reversal_in_tx(session, payment, refund)
 
     transition_booking_status(session, booking, "refunded", actor_id, actor_type)
 
@@ -1205,6 +1214,8 @@ async def process_booking_action_request(
                             session.add(refund_obj)
                             await session.flush()
                             await ledger_service.record_refund(session, refund_obj, payment, admin_id)
+                            from app.modules.partners import service as partners_service
+                            await partners_service.record_refund_reversal_in_tx(session, payment, payment.amount)
                     transition_booking_status(session, booking, "refunded", admin_id, "admin")
 
         elif decision == "rejected":

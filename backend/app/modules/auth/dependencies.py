@@ -85,3 +85,49 @@ async def get_current_user_row(
     if user is None or user.deleted_at is not None:
         raise HTTPException(status_code=401, detail="Account no longer exists")
     return user
+
+
+async def _load_actor(user_id: uuid.UUID) -> User:
+    """Loads the acting user's full row on its OWN short-lived session and
+    returns it detached.
+
+    Why not get_current_user_row: that runs on the request's shared session
+    and leaves a transaction open on it, and every write service in this
+    codebase opens its own with `async with session.begin()` — which raises
+    if one is already in progress. A detached row sidesteps that entirely.
+
+    Unlike the JWT-only CurrentUser, this is a live check: an account that
+    was suspended or deleted a minute ago is refused here even though its
+    access token has not expired yet. Used on the routes where that
+    matters most (team, brokers, money)."""
+    from app.db import SessionLocal
+
+    async with SessionLocal() as session:
+        user = (await session.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
+    if user is None or user.deleted_at is not None or user.suspended_at is not None:
+        raise HTTPException(status_code=401, detail="Account is no longer active")
+    return user
+
+
+async def get_admin_actor(current_user: CurrentUser = Depends(require_role("admin"))) -> User:
+    """Any admin (the super admin included), as a full detached row."""
+    actor = await _load_actor(current_user.id)
+    if actor.role != "admin":
+        raise HTTPException(status_code=403, detail="You don't have access to do this")
+    return actor
+
+
+async def get_super_admin_actor(actor: User = Depends(get_admin_actor)) -> User:
+    """The platform owner only. Checked against the database on every call
+    rather than a JWT claim, so the right can't outlive a transfer of the
+    super admin role by up to one token lifetime."""
+    if not actor.is_super_admin:
+        raise HTTPException(status_code=403, detail="Only the super admin can do this")
+    return actor
+
+
+async def get_broker_actor(current_user: CurrentUser = Depends(require_role("broker"))) -> User:
+    actor = await _load_actor(current_user.id)
+    if actor.role != "broker":
+        raise HTTPException(status_code=403, detail="You don't have access to do this")
+    return actor

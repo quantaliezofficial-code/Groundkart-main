@@ -26,7 +26,7 @@ from datetime import date, datetime, timezone
 from decimal import Decimal
 
 from fastapi import HTTPException
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy import update as sa_update
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -181,6 +181,11 @@ async def list_users_for_admin(
     )
     if role is not None:
         query = query.where(User.role == role)
+    if search:
+        # The parameter was accepted here and by the route but never applied
+        # — typing in the admin Users search box returned the unfiltered list.
+        like = f"%{search.strip()}%"
+        query = query.where(or_(User.name.ilike(like), User.email.ilike(like), User.phone.ilike(like)))
     if suspended_only is True:
         query = query.where(User.suspended_at.is_not(None))
     elif suspended_only is False:
@@ -262,6 +267,11 @@ async def suspend_user(session: AsyncSession, admin_id: uuid.UUID, target_user_i
     if admin_id == target_user_id:
         raise HTTPException(status_code=422, detail="You cannot suspend your own account")
 
+    # Admin accounts are managed by the super admin only, and the super
+    # admin's own account can't be suspended by anyone.
+    from app.modules.team.service import assert_can_manage_account
+    await assert_can_manage_account(session, admin_id, target_user_id)
+
     async with session.begin():
         result = await session.execute(select(User).where(User.id == target_user_id).with_for_update(of=User))
         user = result.scalar_one_or_none()
@@ -298,6 +308,9 @@ async def reactivate_user(session: AsyncSession, admin_id: uuid.UUID, target_use
     """Doesn't restore any refresh tokens revoked at suspension time — the
     user simply logs in again, which is the normal, expected flow, not a
     gap. There's nothing to "undo" about a revoked session."""
+    from app.modules.team.service import assert_can_manage_account
+    await assert_can_manage_account(session, admin_id, target_user_id)
+
     async with session.begin():
         result = await session.execute(select(User).where(User.id == target_user_id).with_for_update(of=User))
         user = result.scalar_one_or_none()

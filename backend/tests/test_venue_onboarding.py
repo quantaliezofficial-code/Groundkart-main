@@ -14,6 +14,7 @@ from app.db import get_db, get_idem_db
 from app.main import app
 from app.models.core import Category, InventoryUnit, UseCase, Venue, VenueMedia, VenueType
 from app.modules.auth.security import create_access_token
+from tests.conftest import REAL_JPEG
 
 
 @pytest_asyncio.fixture
@@ -264,7 +265,7 @@ async def test_submitting_incomplete_draft_returns_422_with_missing_items(
     for i in range(3):
         img_resp = await client.post(
             f"/api/v1/venues/{venue_id}/images",
-            files={"image": (f"img_{i}.jpg", b"\xff\xd8\xff test image", "image/jpeg")},
+            files={"image": (f"img_{i}.jpg", REAL_JPEG, "image/jpeg")},
             data={"is_cover": "true" if i == 0 else "false"},
             headers={"Authorization": f"Bearer {owner_token}"},
         )
@@ -323,7 +324,7 @@ async def test_content_edit_on_draft_preserves_draft_status_active_triggers_rere
     for i in range(3):
         r_img = await client.post(
             f"/api/v1/venues/{venue_id}/images",
-            files={"image": (f"img_{i}.jpg", b"\xff\xd8\xff test image", "image/jpeg")},
+            files={"image": (f"img_{i}.jpg", REAL_JPEG, "image/jpeg")},
             data={"is_cover": "true" if i == 0 else "false"},
             headers={"Authorization": f"Bearer {owner_token}"},
         )

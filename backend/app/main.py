@@ -1064,7 +1064,14 @@ async def get_me_route(user=Depends(get_current_user_row)) -> UserMeResponse:
     verification status.' The frontend's owner-onboarding screens need this
     to know which of the pending/verified/rejected states to show."""
     return UserMeResponse(
-        id=str(user.id), name=user.name, email=user.email, phone=user.phone, role=user.role, is_verified=user.is_verified
+        id=str(user.id),
+        name=user.name,
+        email=user.email,
+        phone=user.phone,
+        role=user.role,
+        is_verified=user.is_verified,
+        must_change_password=user.must_change_password,
+        is_super_admin=bool(user.is_super_admin) and user.role == "admin",
     )
 
 
@@ -1327,6 +1334,7 @@ async def create_venue_route(
         content_blocks=[b.model_dump() for b in body.content_blocks] if body.content_blocks else None,
         status=body.status or ("draft" if body.save_as_draft else "pending_review"),
         save_as_draft=body.save_as_draft,
+        referral_code=body.referral_code,
     )
     return VenueResponse.from_venue(venue)
 
@@ -1454,6 +1462,12 @@ async def upload_venue_media_route(
     current_user: CurrentUser = Depends(require_role("owner", "admin")),
     storage=Depends(get_file_storage),
 ) -> VenueResponse:
+    # Refuse an oversized upload from its declared size before reading it
+    # into memory. (The reverse proxy enforces the same ceiling earlier
+    # still; this is the application's own backstop.)
+    from app.modules.storage.base import MAX_VIDEO_UPLOAD_SIZE_BYTES
+    if image.size is not None and image.size > MAX_VIDEO_UPLOAD_SIZE_BYTES:
+        raise HTTPException(status_code=422, detail="File exceeds the 100MB limit")
     content = await image.read()
     venue = await catalog_service.upload_venue_media(
         session=db,
@@ -2040,6 +2054,13 @@ async def update_system_settings_route(
     """Update active system-wide configuration values with audit logging."""
     from app.modules.core.config_service import update_system_config
     updates = body.model_dump(exclude_unset=True)
+    if updates.get("default_broker_commission_percent") is not None:
+        from app.modules.auth.dependencies import _load_actor
+        actor = await _load_actor(current_user.id)
+        if not actor.is_super_admin:
+            raise HTTPException(
+                status_code=403, detail="Only the super admin can change the default referral commission"
+            )
     config = await update_system_config(db, current_user.id, updates)
     return SystemSettingsResponse.model_validate(config)
 
@@ -2653,18 +2674,25 @@ async def delete_venue_route(
     db: AsyncSession = Depends(get_db),
     current_user: CurrentUser = Depends(get_current_user),
 ):
-    print(f"DELETE VENUE CALLED FOR {venue_id} BY {current_user.id}")
+    """Owner removes their own listing. Archived, never hard-deleted: the
+    row, its bookings and its history all stay on record."""
     venue = await catalog_service.get_venue(db, venue_id, current_user)
     if not venue:
-        print("VENUE IS NONE")
         raise HTTPException(status_code=404, detail="Venue not found")
-    print(f"VENUE FOUND: {venue.id} OWNER {venue.owner_id}")
     if venue.owner_id != current_user.id:
-        print("NOT AUTHORIZED")
         raise HTTPException(status_code=403, detail="Not authorized")
+    previous_status = venue.status
     venue.status = "archived"
+    db.add(
+        AuditLog(
+            actor_id=current_user.id,
+            action="venue.archived",
+            entity_type="venue",
+            entity_id=venue.id,
+            extra_data={"from_status": previous_status},
+        )
+    )
     await db.commit()
-    print("VENUE ARCHIVED")
     return Response(status_code=204)
 
 @app.delete("/api/v1/users/me", status_code=204)
@@ -2672,21 +2700,31 @@ async def delete_me_route(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user_row),
 ):
-    current_user.deleted_at = datetime.now(timezone.utc)
-    # Also archive their active venues
-    await db.execute(
-        select(Venue).where(Venue.owner_id == current_user.id)
-    ) # just to load? no need, just update
-    
-    await db.execute(
-        func.current_timestamp() # dummy
-    )
-    # Better:
+    """Self-service account closure. Soft delete: the row stays so bookings,
+    payments and audit entries keep pointing at a real record."""
+    if current_user.is_super_admin:
+        # Deleting the only owner account would leave the platform with
+        # nobody able to manage admins or commission terms.
+        raise HTTPException(
+            status_code=409,
+            detail="The super admin account can't be deleted. Transfer the role first.",
+        )
     from sqlalchemy import update
+    from app.models.core import RefreshToken
+
+    now = datetime.now(timezone.utc)
+    current_user.deleted_at = now
     await db.execute(
-        update(Venue)
-        .where(Venue.owner_id == current_user.id)
-        .values(status="archived")
+        update(Venue).where(Venue.owner_id == current_user.id).values(status="archived")
+    )
+    # End every session for the closed account, not just this one.
+    await db.execute(
+        update(RefreshToken)
+        .where(RefreshToken.user_id == current_user.id, RefreshToken.revoked_at.is_(None))
+        .values(revoked_at=now)
+    )
+    db.add(
+        AuditLog(actor_id=current_user.id, action="user.deleted_self", entity_type="user", entity_id=current_user.id)
     )
     await db.commit()
     return Response(status_code=204)
@@ -2705,6 +2743,13 @@ async def delete_image_route(
         viewer=current_user,
     )
     return Response(status_code=204)
+
+
+# Team, referral partners, broker dashboard, banners, records & exports,
+# and Open Graph share pages live in their own router.
+from app.routers.platform import router as platform_router
+
+app.include_router(platform_router)
 
 
 @app.exception_handler(Exception)
@@ -2879,6 +2924,11 @@ async def admin_reset_password_route(
     db: AsyncSession = Depends(get_db),
     current_user: CurrentUser = Depends(require_role("admin")),
 ):
+    # An admin who could reset another admin's (or the super admin's)
+    # password could take that account over. Only the super admin may act
+    # on admin accounts; nobody may act on the super admin's from here.
+    from app.modules.team.service import assert_can_manage_account
+    await assert_can_manage_account(db, current_user.id, user_id)
     if body.method == "link":
         reset_url = await admin_passwords_service.admin_generate_reset_link(
             db, current_user.id, user_id, body.reason, body.source_type, body.source_id

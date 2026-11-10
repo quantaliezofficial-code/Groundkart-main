@@ -19,6 +19,7 @@ from app.db import get_db, get_idem_db
 from app.main import app
 from app.models.core import Venue
 from app.modules.auth.security import create_access_token
+from tests.conftest import REAL_JPEG
 
 
 @pytest_asyncio.fixture
@@ -184,7 +185,7 @@ async def test_rejecting_a_venue_sets_draft_and_reason_then_resubmit_returns_to_
     for i in range(3):
         await client.post(
             f"/api/v1/venues/{venue_id}/images",
-            files={"image": (f"daylight_{i}.jpg", b"\xff\xd8\xff daylight photo", "image/jpeg")},
+            files={"image": (f"daylight_{i}.jpg", REAL_JPEG, "image/jpeg")},
             data={"is_cover": "true" if i == 0 else "false"},
             headers={"Authorization": f"Bearer {owner_token}"},
         )
@@ -273,7 +274,7 @@ async def test_cover_image_switch_is_atomic_not_two_covers(
 
     first = await client.post(
         f"/api/v1/venues/{venue_id}/images",
-        files={"image": ("cover1.jpg", b"\xff\xd8\xff fake jpeg bytes", "image/jpeg")},
+        files={"image": ("cover1.jpg", REAL_JPEG, "image/jpeg")},
         data={"is_cover": "true"},
         headers={"Authorization": f"Bearer {owner_token}"},
     )
@@ -281,7 +282,7 @@ async def test_cover_image_switch_is_atomic_not_two_covers(
 
     second = await client.post(
         f"/api/v1/venues/{venue_id}/images",
-        files={"image": ("cover2.jpg", b"\xff\xd8\xff different fake jpeg", "image/jpeg")},
+        files={"image": ("cover2.jpg", REAL_JPEG, "image/jpeg")},
         data={"is_cover": "true"},
         headers={"Authorization": f"Bearer {owner_token}"},
     )
@@ -425,7 +426,7 @@ async def test_submitting_venue_to_pending_review_requires_at_least_3_photos(
     for i in range(2):
         await client.post(
             f"/api/v1/venues/{venue_id}/images",
-            files={"image": (f"photo{i}.jpg", b"\xff\xd8\xff jpeg bytes", "image/jpeg")},
+            files={"image": (f"photo{i}.jpg", REAL_JPEG, "image/jpeg")},
             data={"is_cover": "true" if i == 0 else "false"},
             headers={"Authorization": f"Bearer {owner_token}"},
         )
@@ -451,7 +452,7 @@ async def test_submitting_venue_to_pending_review_requires_at_least_3_photos(
     # 3. Upload a 3rd photo and create a future inventory unit -> now submission succeeds
     await client.post(
         f"/api/v1/venues/{venue_id}/images",
-        files={"image": ("photo2.jpg", b"\xff\xd8\xff jpeg bytes 3", "image/jpeg")},
+        files={"image": ("photo2.jpg", REAL_JPEG, "image/jpeg")},
         data={"is_cover": "false"},
         headers={"Authorization": f"Bearer {owner_token}"},
     )

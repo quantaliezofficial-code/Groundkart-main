@@ -98,6 +98,9 @@ async def ensure_admin_account(session) -> None:
         password_hash=hash_password(admin_password),
         role="admin",
         is_verified=True,
+        # Reached only when no admin exists at all, so this first account is
+        # the platform owner (the single super admin).
+        is_super_admin=True,
         must_change_password=generated_pw,
     )
     session.add(new_admin)

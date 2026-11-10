@@ -88,6 +88,10 @@ class UserMeResponse(BaseModel):
     role: str
     is_verified: bool
     must_change_password: bool = False
+    # True only for the single platform owner account. Drives which admin
+    # screens the frontend shows; every protected route re-checks it
+    # server-side, so this is display information, not an access grant.
+    is_super_admin: bool = False
 
 
 class ForgotPasswordRequest(BaseModel):

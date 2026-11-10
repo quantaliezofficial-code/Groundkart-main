@@ -87,11 +87,24 @@ class User(Base):
     suspension_reason: Mapped[str | None]
     must_change_password: Mapped[bool] = mapped_column(default=False)
     password_changed_at: Mapped[datetime | None]
+    # The single platform owner account. A flag on top of role='admin'
+    # rather than a separate role, so every existing require_role("admin")
+    # check keeps working; uq_single_super_admin (partial unique index)
+    # guarantees there is never more than one.
+    is_super_admin: Mapped[bool] = mapped_column(default=False, server_default=text("false"))
+    # Who created this account from the admin console (admins and brokers
+    # are never self-registered). NULL for self-signup customers/owners.
+    created_by: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL", name="fk_users_created_by"), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(server_default=text("now()"))
     updated_at: Mapped[datetime] = mapped_column(server_default=text("now()"))
     deleted_at: Mapped[datetime | None]
 
-    venues: Mapped[list["Venue"]] = relationship(back_populates="owner")
+    venues: Mapped[list["Venue"]] = relationship(back_populates="owner", foreign_keys="Venue.owner_id")
+    broker_profile: Mapped["BrokerProfile | None"] = relationship(
+        back_populates="user", uselist=False, foreign_keys="BrokerProfile.user_id"
+    )
     bookings: Mapped[list["Booking"]] = relationship(back_populates="customer")
     refresh_tokens: Mapped[list["RefreshToken"]] = relationship(back_populates="user")
     owner_verifications: Mapped[list["OwnerVerification"]] = relationship(
@@ -178,12 +191,22 @@ class Venue(Base):
     # time (nothing to diff against). Cleared back to NULL by approve_venue/
     # reject_venue once the admin acts — the pending state is resolved.
     pending_changes: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    # Referral attribution: the broker whose code the owner entered while
+    # listing (or that an admin attached afterwards). referral_code keeps
+    # the code exactly as it was applied, so the record still reads
+    # correctly even if the broker's code is later regenerated.
+    broker_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL", name="fk_venues_broker_id"), nullable=True
+    )
+    referral_code: Mapped[str | None]
+    referred_at: Mapped[datetime | None]
     avg_rating: Mapped[Decimal] = mapped_column(Numeric(3, 2), default=0)
     created_at: Mapped[datetime] = mapped_column(server_default=text("now()"))
     updated_at: Mapped[datetime] = mapped_column(server_default=text("now()"))
     deleted_at: Mapped[datetime | None]
 
-    owner: Mapped["User"] = relationship(back_populates="venues")
+    owner: Mapped["User"] = relationship(back_populates="venues", foreign_keys=[owner_id])
+    broker: Mapped["User | None"] = relationship(foreign_keys=[broker_id])
     venue_category_rel: Mapped["Category | None"] = relationship(foreign_keys=[category_id])
     venue_type: Mapped["VenueType | None"] = relationship(foreign_keys=[venue_type_id])
     use_cases: Mapped[list["UseCase"]] = relationship(secondary="venue_use_cases", back_populates="venues")
@@ -1011,6 +1034,11 @@ class SystemConfiguration(Base):
     cancellation_partial_refund_percent: Mapped[int] = mapped_column(default=50)
     platform_commission_percent: Mapped[int] = mapped_column(default=10)
     payout_holdback_days: Mapped[int] = mapped_column(default=3)
+    # Rate pre-filled when an admin adds a broker. Only the super admin can
+    # change an individual broker's rate afterwards.
+    default_broker_commission_percent: Mapped[Decimal] = mapped_column(
+        Numeric(5, 2), default=Decimal("2.00"), server_default="2"
+    )
 
     created_at: Mapped[datetime] = mapped_column(server_default=text("now()"))
     updated_at: Mapped[datetime] = mapped_column(server_default=text("now()"))
@@ -1580,3 +1608,185 @@ class GuestEnquiry(Base):
     created_at: Mapped[datetime] = mapped_column(server_default=text("now()"))
 
 
+
+
+class BrokerProfile(Base):
+    """A referral partner ("broker"): a field agent who brings venue owners
+    onto the platform. Created only from the admin console, never by
+    self-signup. The commission terms live here, per broker, and are set by
+    the super admin."""
+
+    __tablename__ = "broker_profiles"
+    __table_args__ = (
+        UniqueConstraint("referral_code", name="uq_broker_referral_code"),
+        CheckConstraint("commission_percent BETWEEN 0 AND 100", name="chk_broker_commission_range"),
+        CheckConstraint(
+            "commission_basis IN ('booking_amount', 'platform_commission')",
+            name="chk_broker_commission_basis",
+        ),
+        CheckConstraint("status IN ('active', 'paused')", name="chk_broker_status"),
+    )
+
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
+    referral_code: Mapped[str]
+    commission_percent: Mapped[Decimal] = mapped_column(Numeric(5, 2), default=Decimal("0.00"))
+    # 'booking_amount'      -> rate applies to the money received for the booking
+    # 'platform_commission' -> rate applies to GroundKart's own commission on it
+    commission_basis: Mapped[str] = mapped_column(default="booking_amount", server_default="booking_amount")
+    # 'paused' stops NEW attributions and NEW commissions; history and any
+    # balance already earned stay exactly as they are.
+    status: Mapped[str] = mapped_column(default="active", server_default="active")
+    company_name: Mapped[str | None]
+    city: Mapped[str | None]
+    payout_method: Mapped[str | None]
+    payout_details: Mapped[str | None]
+    notes: Mapped[str | None]
+    created_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    created_at: Mapped[datetime] = mapped_column(server_default=text("now()"))
+    updated_at: Mapped[datetime] = mapped_column(server_default=text("now()"))
+
+    user: Mapped["User"] = relationship(back_populates="broker_profile", foreign_keys=[user_id])
+
+
+class BrokerPayout(Base):
+    """One settlement to a broker. Immutable once written: a correction is a
+    new row, never an edit."""
+
+    __tablename__ = "broker_payouts"
+    __table_args__ = (
+        CheckConstraint("amount > 0", name="chk_broker_payout_positive"),
+        Index("idx_broker_payouts_broker", "broker_id", "paid_at"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    broker_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    amount: Mapped[Decimal] = mapped_column(Numeric(12, 2))
+    method: Mapped[str | None]
+    reference: Mapped[str | None]
+    notes: Mapped[str | None]
+    paid_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    paid_at: Mapped[datetime] = mapped_column(server_default=text("now()"))
+    created_at: Mapped[datetime] = mapped_column(server_default=text("now()"))
+
+    items: Mapped[list["BrokerPayoutItem"]] = relationship(
+        back_populates="payout", cascade="all, delete-orphan"
+    )
+
+
+class BrokerCommission(Base):
+    """One row per confirmed payment at a referred venue.
+
+    Three amounts, never overwritten into one another:
+      amount          what the broker earned when the payment was confirmed
+      reversed_amount what refunds have since taken back
+      paid_amount     what has actually been settled to the broker
+    Balance due on a row = amount - reversed_amount - paid_amount. It can be
+    negative (a refund after the broker was already paid); that shortfall is
+    carried and netted off the next settlement.
+
+    A row becomes payable once event_date has passed — the same idea as the
+    owner payout holdback: nobody is paid for an event that has not happened.
+    """
+
+    __tablename__ = "broker_commissions"
+    __table_args__ = (
+        UniqueConstraint("payment_id", name="uq_broker_commission_per_payment"),
+        CheckConstraint("amount >= 0", name="chk_broker_commission_nonneg"),
+        CheckConstraint(
+            "reversed_amount >= 0 AND reversed_amount <= amount",
+            name="chk_broker_commission_reversal_range",
+        ),
+        Index("idx_broker_commissions_broker", "broker_id", "event_date"),
+        Index("idx_broker_commissions_venue", "venue_id"),
+        Index("idx_broker_commissions_booking", "booking_id"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    broker_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    venue_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("venues.id", ondelete="RESTRICT"))
+    booking_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("bookings.id", ondelete="RESTRICT"))
+    payment_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("payments.id", ondelete="RESTRICT"))
+    event_date: Mapped[date_]
+    basis: Mapped[str]
+    basis_amount: Mapped[Decimal] = mapped_column(Numeric(10, 2))
+    rate: Mapped[Decimal] = mapped_column(Numeric(5, 2))
+    amount: Mapped[Decimal] = mapped_column(Numeric(10, 2))
+    reversed_amount: Mapped[Decimal] = mapped_column(Numeric(10, 2), default=Decimal("0.00"), server_default="0")
+    paid_amount: Mapped[Decimal] = mapped_column(Numeric(10, 2), default=Decimal("0.00"), server_default="0")
+    created_at: Mapped[datetime] = mapped_column(server_default=text("now()"))
+    updated_at: Mapped[datetime] = mapped_column(server_default=text("now()"))
+
+    venue: Mapped["Venue"] = relationship()
+    booking: Mapped["Booking"] = relationship()
+
+    @property
+    def net_amount(self) -> Decimal:
+        return self.amount - self.reversed_amount
+
+    @property
+    def balance_due(self) -> Decimal:
+        return self.amount - self.reversed_amount - self.paid_amount
+
+
+class BrokerPayoutItem(Base):
+    """Which commission rows a settlement covered, and for how much each."""
+
+    __tablename__ = "broker_payout_items"
+
+    payout_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("broker_payouts.id", ondelete="CASCADE"), primary_key=True
+    )
+    commission_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("broker_commissions.id", ondelete="RESTRICT"), primary_key=True
+    )
+    amount: Mapped[Decimal] = mapped_column(Numeric(10, 2))
+
+    payout: Mapped["BrokerPayout"] = relationship(back_populates="items")
+
+
+class SiteBanner(Base):
+    """Admin-managed promotional banner. Several can be live at once in the
+    same placement; the site rotates through them in priority order.
+
+    Scheduling follows HomepagePlacement: NULL start = show immediately,
+    NULL end = no expiry."""
+
+    __tablename__ = "site_banners"
+    __table_args__ = (
+        CheckConstraint(
+            "placement IN ('home_hero', 'home_strip', 'search_top')", name="chk_banner_placement"
+        ),
+        CheckConstraint(
+            "start_at IS NULL OR end_at IS NULL OR start_at < end_at", name="chk_banner_window"
+        ),
+        Index(
+            "idx_site_banners_placement",
+            "placement",
+            "priority",
+            postgresql_where=text("enabled = TRUE"),
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    placement: Mapped[str] = mapped_column(default="home_hero", server_default="home_hero")
+    title: Mapped[str]
+    subtitle: Mapped[str | None]
+    image_url: Mapped[str | None]
+    image_storage_key: Mapped[str | None]
+    cta_label: Mapped[str | None]
+    cta_url: Mapped[str | None]
+    enabled: Mapped[bool] = mapped_column(default=True, server_default=text("true"))
+    priority: Mapped[int] = mapped_column(default=0, server_default="0")
+    start_at: Mapped[datetime | None]
+    end_at: Mapped[datetime | None]
+    created_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    created_at: Mapped[datetime] = mapped_column(server_default=text("now()"))
+    updated_at: Mapped[datetime] = mapped_column(server_default=text("now()"))

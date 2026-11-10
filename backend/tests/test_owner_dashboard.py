@@ -30,6 +30,7 @@ from app.main import app
 from app.models.core import Booking, InventoryUnit, OwnerVerification, User, Venue
 from app.modules.auth.security import create_access_token, hash_password
 from app.modules.booking.service import confirm_booking_from_webhook, create_booking
+from tests.conftest import REAL_JPEG
 
 
 @pytest_asyncio.fixture
@@ -379,7 +380,7 @@ async def test_uploaded_venue_image_url_is_actually_fetchable(client, test_sessi
 
     upload_resp = await client.post(
         f"/api/v1/venues/{venue_id}/images",
-        files={"image": ("cover.jpg", b"\xff\xd8\xff fake jpeg bytes", "image/jpeg")},
+        files={"image": ("cover.jpg", REAL_JPEG, "image/jpeg")},
         data={"is_cover": "true"},
         headers={"Authorization": f"Bearer {token}"},
     )
@@ -392,8 +393,9 @@ async def test_uploaded_venue_image_url_is_actually_fetchable(client, test_sessi
     assert "/uploads/" in image_url
 
     # Prove it's not just a plausible-looking URL — actually fetch it
-    # through the same ASGI app (StaticFiles mount) and confirm the exact
-    # bytes that were uploaded come back.
+    # through the same ASGI app (StaticFiles mount). Uploads are re-encoded
+    # to WebP on the way in, so what comes back is a real WebP image rather
+    # than the original bytes.
     fetch_resp = await client.get(image_url)
     assert fetch_resp.status_code == 200
-    assert fetch_resp.content == b"\xff\xd8\xff fake jpeg bytes"
+    assert fetch_resp.content[:4] == b"RIFF" and fetch_resp.content[8:12] == b"WEBP"

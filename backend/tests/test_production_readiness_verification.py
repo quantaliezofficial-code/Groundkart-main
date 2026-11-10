@@ -69,7 +69,10 @@ async def test_end_to_end_production_readiness_flow(
     relative_image_path = image_url.split("http://localhost:8000")[-1]
     image_fetch = await client.get(relative_image_path)
     assert image_fetch.status_code == 200
-    assert image_fetch.content == fake_image_bytes
+    # Uploads are re-encoded to WebP on the way in (metadata stripped, size
+    # capped), so what is served is a real WebP rather than the original bytes.
+    assert image_fetch.content[:4] == b"RIFF" and image_fetch.content[8:12] == b"WEBP"
+    assert image_url.endswith(".webp")
 
     # 2. Upload a verification document
     fake_doc_bytes = b"%PDF-1.4 confidential owner identity document"

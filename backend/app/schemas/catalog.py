@@ -134,6 +134,8 @@ class VenueCreateRequest(BaseModel):
     purposes: list[VenuePurposeCreate] | None = None
     status: str | None = None
     save_as_draft: bool = False
+    # Optional referral partner code, entered by the owner while listing.
+    referral_code: str | None = Field(default=None, max_length=24)
 
     @model_validator(mode="after")
     def validate_category_presence(self) -> "VenueCreateRequest":

@@ -39,11 +39,16 @@ class AdminUserView(BaseModel):
 
     id: uuid.UUID
     name: str
-    email: str
+    # Optional: phone is the mandatory identifier, email is not. Declaring
+    # this as plain `str` made the whole Users list fail with a 500 as soon
+    # as one account without an email existed.
+    email: str | None = None
     phone: str | None = None
     role: str
     suspended_at: datetime | None
     suspension_reason: str | None
+    is_super_admin: bool = False
+    created_at: datetime | None = None
 
     model_config = {"from_attributes": True}
 
@@ -96,6 +101,15 @@ class AdminOwnerVerificationView(BaseModel):
         )
 
 
+def _loaded_broker_name(venue) -> str | None:
+    """The broker's name if Venue.broker was eager-loaded, else None —
+    never triggers a lazy load (which would fail on an async session)."""
+    from sqlalchemy.orm import attributes
+
+    broker = attributes.instance_state(venue).dict.get("broker")
+    return broker.name if broker is not None else None
+
+
 class AdminVenueView(BaseModel):
     """GET /api/v1/admin/venues — same shape as VenueResponse (backend/app/
     schemas/catalog.py) plus owner_name/owner_email. Deliberately a
@@ -108,7 +122,7 @@ class AdminVenueView(BaseModel):
     id: uuid.UUID
     owner_id: uuid.UUID
     owner_name: str
-    owner_email: str
+    owner_email: str | None = None
     owner_phone: str | None = None
     name: str
     slug: str
@@ -128,6 +142,11 @@ class AdminVenueView(BaseModel):
     media: list[VenueMediaResponse] = []
     amenities: list[str] = []
     created_at: datetime
+    # Referral attribution (admin-only; never on the public VenueResponse).
+    broker_id: uuid.UUID | None = None
+    broker_name: str | None = None
+    referral_code: str | None = None
+    referred_at: datetime | None = None
 
     @classmethod
     def from_venue(cls, venue) -> "AdminVenueView":
@@ -137,6 +156,10 @@ class AdminVenueView(BaseModel):
             owner_name=venue.owner.name,
             owner_email=venue.owner.email,
             owner_phone=venue.owner.phone if venue.owner else None,
+            broker_id=venue.broker_id,
+            broker_name=_loaded_broker_name(venue),
+            referral_code=venue.referral_code,
+            referred_at=venue.referred_at,
             name=venue.name,
             slug=venue.slug,
             category=venue.category,
@@ -437,6 +460,7 @@ class SystemSettingsResponse(BaseModel):
     cancellation_partial_refund_percent: int
     platform_commission_percent: int
     payout_holdback_days: int = 3
+    default_broker_commission_percent: Decimal = Decimal("2.00")
     updated_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
@@ -450,6 +474,8 @@ class SystemSettingsUpdateRequest(BaseModel):
     cancellation_partial_refund_percent: int | None = Field(default=None, ge=0, le=100)
     platform_commission_percent: int | None = Field(default=None, ge=0, le=100)
     payout_holdback_days: int | None = Field(default=None, ge=0, le=90)
+    # Super admin only — enforced in the route.
+    default_broker_commission_percent: Decimal | None = Field(default=None, ge=0, le=100, decimal_places=2)
 
 
 class BookingActionProcessRequest(BaseModel):

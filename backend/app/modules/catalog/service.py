@@ -222,6 +222,7 @@ async def create_venue(
     content_blocks: list[dict] | None = None,
     status: str = "pending_review",
     save_as_draft: bool = False,
+    referral_code: str | None = None,
 ) -> Venue:
     if unit_type not in ("hour", "half_day", "full_day"):
         raise HTTPException(
@@ -321,6 +322,27 @@ async def create_venue(
 
         session.add(venue)
         await session.flush()
+
+        # First entry in the listing's history. Every later step (submit,
+        # edit, approve, reject, suspend) adds its own, so the full life of
+        # a listing can be read back from the audit log.
+        session.add(
+            AuditLog(
+                actor_id=owner_id,
+                action="venue.created",
+                entity_type="venue",
+                entity_id=venue.id,
+                extra_data={"name": name, "city": city, "category": category, "status": actual_status},
+            )
+        )
+        if actual_status == "pending_review":
+            session.add(
+                AuditLog(actor_id=owner_id, action="venue.submitted", entity_type="venue", entity_id=venue.id)
+            )
+        if referral_code:
+            from app.modules.partners import service as partners_service
+            await partners_service.apply_referral_code_in_tx(session, venue, referral_code, owner_id)
+
         refreshed = await _get_with_relations(session, venue.id)
         return refreshed or venue
 
@@ -468,7 +490,12 @@ async def list_venues_for_admin(
     query = (
         select(Venue)
         .where(Venue.deleted_at.is_(None))
-        .options(selectinload(Venue.media), selectinload(Venue.amenities), selectinload(Venue.owner))
+        .options(
+            selectinload(Venue.media),
+            selectinload(Venue.amenities),
+            selectinload(Venue.owner),
+            selectinload(Venue.broker),
+        )
         .order_by(Venue.created_at.desc())
         .limit(limit)
         .offset(offset)
@@ -514,6 +541,7 @@ async def update_venue(
 
         content_changed = False
         diff: dict = {}
+        status_before = venue.status
 
         # Handle taxonomy updates
         if "category_id" in changes:
@@ -683,6 +711,32 @@ async def update_venue(
             if diff:
                 _merge_pending_changes(venue, diff)
 
+        # History. Field NAMES only for edits — the before/after values are
+        # already kept in pending_changes for the reviewer, and descriptions
+        # can be long.
+        if status_before != venue.status and venue.status == "pending_review":
+            session.add(
+                AuditLog(
+                    actor_id=viewer.id,
+                    action="venue.submitted",
+                    entity_type="venue",
+                    entity_id=venue.id,
+                    extra_data={"from_status": status_before, "fields": sorted(diff.keys())},
+                )
+            )
+        elif diff:
+            session.add(
+                AuditLog(
+                    actor_id=viewer.id,
+                    action="venue.updated",
+                    entity_type="venue",
+                    entity_id=venue.id,
+                    extra_data={"fields": sorted(diff.keys()), "by_role": viewer.role},
+                )
+            )
+        if diff or status_before != venue.status:
+            venue.updated_at = datetime.now(timezone.utc)
+
     return venue
 
 
@@ -742,6 +796,13 @@ async def upload_venue_media(
             is_cover = True
 
         try:
+            if media_type == "image":
+                # Decode, strip metadata, cap the size and re-encode as WebP
+                # before anything touches storage. Also the real content
+                # check: bytes that are not an image are refused here no
+                # matter what Content-Type the client sent.
+                from app.modules.storage.images import optimize_image
+                content, content_type, _size = optimize_image(content)
             url, storage_key = await storage.save(content, content_type, key_prefix=f"venues/{venue_id}")
         except UnsupportedFileError as exc:
             raise HTTPException(status_code=422, detail=str(exc))

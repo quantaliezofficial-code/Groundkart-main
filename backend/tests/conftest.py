@@ -14,6 +14,23 @@ from sqlalchemy.pool import NullPool
 os.environ["DATABASE_URL"] = "postgresql+asyncpg://groundbooking:devpassword@localhost:5432/groundbooking_test"
 
 from app.models.core import InventoryUnit, User, Venue  # noqa: E402
+
+
+def real_image_bytes(fmt: str = "JPEG", color: tuple[int, int, int] = (20, 90, 60), size: tuple[int, int] = (64, 48)) -> bytes:
+    """A small but genuine image. Uploads are decoded and re-encoded on the
+    server now, so a placeholder like b"\xff\xd8\xff fake" is (correctly)
+    rejected as not being an image."""
+    import io
+
+    from PIL import Image
+
+    buf = io.BytesIO()
+    Image.new("RGB", size, color).save(buf, format=fmt)
+    return buf.getvalue()
+
+
+REAL_JPEG = real_image_bytes("JPEG")
+REAL_PNG = real_image_bytes("PNG")
 from app.modules.auth.security import hash_password  # noqa: E402
 
 TEST_DATABASE_URL = os.environ["DATABASE_URL"]
@@ -49,7 +66,7 @@ async def clean_tables(test_engine):
                 async with test_engine.begin() as conn:
                     await conn.execute(
                         text(
-                            "TRUNCATE ticket_events, support_tickets, "
+                            "TRUNCATE broker_payout_items, broker_commissions, broker_payouts, broker_profiles, site_banners, ticket_events, support_tickets, "
                             "help_search_log, help_feedback, help_article_revisions, help_articles, help_categories, guest_enquiries, "
                             "blocks, venue_media, venue_rental_options, venue_purposes, venue_amenities, amenities, audit_logs, "
                             "ledger_entries, refunds, owner_bank_accounts, owner_verifications, refresh_tokens, login_rate_limits, payments, "
@@ -66,6 +83,7 @@ async def clean_tables(test_engine):
                             "cancellation_partial_refund_hours = 24, "
                             "cancellation_partial_refund_percent = 50, "
                             "platform_commission_percent = 10, "
+                            "default_broker_commission_percent = 2, "
                             "payout_holdback_days = 0"
                         )
                     )
