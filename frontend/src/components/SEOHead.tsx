@@ -8,15 +8,17 @@ export interface SEOHeadProps {
   canonicalUrl?: string;
   ogImage?: string;
   ogType?: 'website' | 'article' | 'place' | 'business.business';
+  /** Alt text for the share image. Defaults to the page title. */
+  ogImageAlt?: string;
   noindex?: boolean;
   jsonLd?: Record<string, any> | Array<Record<string, any>>;
 }
 
-const DEFAULT_TITLE = `${SITE_NAME} — Book Sports Turfs, Courts & Event Spaces`;
+const DEFAULT_TITLE = `${SITE_NAME} — Book Grounds, Halls and Event Venues`;
 const DEFAULT_DESC =
-  `Book premium sports turfs, cricket grounds, football pitches, badminton courts, banquet halls, and private farmhouses instantly on ${SITE_NAME}.`;
+  `Find and book sports grounds, banquet halls, party venues, farmhouses and meeting spaces on ${SITE_NAME}. Compare photos, prices and availability, then request your date.`;
 const DEFAULT_CANONICAL = absUrl('/');
-const DEFAULT_OG_IMAGE = absUrl('/og-image.png');
+const DEFAULT_OG_IMAGE = absUrl('/og-image.jpg');
 
 export default function SEOHead({
   title = DEFAULT_TITLE,
@@ -24,6 +26,7 @@ export default function SEOHead({
   canonicalUrl = DEFAULT_CANONICAL,
   ogImage = DEFAULT_OG_IMAGE,
   ogType = 'website',
+  ogImageAlt,
   noindex = false,
   jsonLd,
 }: SEOHeadProps) {
@@ -36,6 +39,7 @@ export default function SEOHead({
     ? ogImage
     : absUrl(ogImage);
 
+  const isDefaultImage = resolvedOgImage === DEFAULT_OG_IMAGE;
   const robotsContent = noindex ? 'noindex, nofollow' : 'index, follow';
 
   return (
@@ -52,16 +56,21 @@ export default function SEOHead({
       <meta property="og:title" content={title} />
       <meta property="og:description" content={description} />
       <meta property="og:url" content={resolvedCanonical} />
+      <meta property="og:locale" content="en_IN" />
       <meta property="og:image" content={resolvedOgImage} />
-      <meta property="og:image:width" content="1200" />
-      <meta property="og:image:height" content="630" />
-      <meta property="og:image:alt" content={title} />
+      {/* Dimensions are only known for our own 1200x630 card; a venue's
+          cover photo can be any shape, so they are omitted for those
+          rather than stated wrongly. */}
+      {isDefaultImage && <meta property="og:image:width" content="1200" />}
+      {isDefaultImage && <meta property="og:image:height" content="630" />}
+      <meta property="og:image:alt" content={ogImageAlt || title} />
 
       {/* Twitter / X */}
       <meta name="twitter:card" content="summary_large_image" />
       <meta name="twitter:title" content={title} />
       <meta name="twitter:description" content={description} />
       <meta name="twitter:image" content={resolvedOgImage} />
+      <meta name="twitter:image:alt" content={ogImageAlt || title} />
 
       {/* Structured Data (JSON-LD) */}
       {jsonLd && (

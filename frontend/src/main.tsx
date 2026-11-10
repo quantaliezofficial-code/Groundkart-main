@@ -6,7 +6,11 @@ import { HelmetProvider } from 'react-helmet-async';
 import App from './App.tsx';
 import ResetPassword from './components/ResetPassword.tsx';
 import ForgotPassword from './components/ForgotPassword.tsx';
-import 'lenis/dist/lenis.css';
+// Fonts are bundled and served from our own origin: no third-party request
+// on first paint, no layout shift waiting on fonts.googleapis.com, and the
+// site keeps its typography on networks that block Google.
+import '@fontsource-variable/inter';
+import '@fontsource-variable/fraunces';
 import './index.css';
 import { AuthProvider } from './lib/auth.tsx';
 import { queryClient } from './lib/queryClient.ts';

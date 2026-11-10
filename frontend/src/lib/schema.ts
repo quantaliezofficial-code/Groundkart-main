@@ -34,7 +34,7 @@ export function generateOrganizationSchema() {
     name: SITE_NAME,
     url: CANONICAL_BASE,
     logo: absUrl('/logo-full.png'),
-    image: absUrl('/og-image.png'),
+    image: absUrl('/og-image.jpg'),
     description: 'Premier online venue discovery and booking marketplace.',
     contactPoint: [
       {

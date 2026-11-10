@@ -53,7 +53,7 @@ async def test_end_to_end_production_readiness_flow(
     assert create_venue_resp.status_code == 201
     venue_id = create_venue_resp.json()["id"]
 
-    fake_image_bytes = b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x02\x00\x00\x00\x90wS\xde\x00\x00\x00\x0cIDATx\x9cc\xf8\x0f\x00\x00\x01\x01\x00\x05\x18\xd8N\x00\x00\x00\x00IEND\xaeB`\x82"
+    from tests.conftest import REAL_PNG as fake_image_bytes
     upload_resp = await client.post(
         f"/api/v1/venues/{venue_id}/images",
         files={"image": ("photo.png", fake_image_bytes, "image/png")},

@@ -55,7 +55,8 @@ async def test_s3_storage_success(mock_session_cls):
         Bucket="test-bucket",
         Key=key,
         Body=content,
-        ContentType="image/png"
+        ContentType="image/png",
+        CacheControl="public, max-age=31536000, immutable",
     )
 
 @pytest.mark.asyncio

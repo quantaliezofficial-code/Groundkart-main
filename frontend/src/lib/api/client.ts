@@ -168,12 +168,45 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
 
     const retryAfterHeader = response.headers.get('Retry-After');
     const retryAfterSeconds = retryAfterHeader ? parseInt(retryAfterHeader, 10) : undefined;
-    const detail =
-      typeof data?.detail === 'string' ? data.detail : data?.detail ? JSON.stringify(data.detail) : response.statusText;
-    throw new ApiError(response.status, detail, data, retryAfterSeconds);
+    throw new ApiError(response.status, readableDetail(data, response.statusText), data, retryAfterSeconds);
   }
 
   return data as T;
+}
+
+/**
+ * Turns an error body into one sentence a person can act on.
+ *
+ * FastAPI reports validation failures as a list of objects
+ * ([{loc: ["body","phone"], msg: "Value error, Phone number…"}]). Showing
+ * that list raw put JSON in front of users. This keeps the messages, drops
+ * the framework's "Value error, " prefix, and names the field when the
+ * message alone would be ambiguous ("Field required").
+ */
+export function readableDetail(data: any, fallback: string): string {
+  const detail = data?.detail;
+  if (typeof detail === 'string') return detail;
+  if (Array.isArray(detail)) {
+    const parts = detail
+      .map((item: any) => {
+        if (typeof item === 'string') return item;
+        const msg = String(item?.msg ?? '').replace(/^Value error,\s*/i, '');
+        if (!msg) return '';
+        const loc = Array.isArray(item?.loc) ? item.loc.filter((p: unknown) => p !== 'body' && p !== 'query') : [];
+        const field = loc.length ? String(loc[loc.length - 1]).replace(/_/g, ' ') : '';
+        const generic = /^(field required|input should|string should|value is not)/i.test(msg);
+        return field && generic ? `${field.charAt(0).toUpperCase()}${field.slice(1)}: ${msg.charAt(0).toLowerCase()}${msg.slice(1)}` : msg;
+      })
+      .filter(Boolean);
+    if (parts.length) return [...new Set(parts)].join(' ');
+  }
+  if (detail && typeof detail === 'object') {
+    if (typeof detail.message === 'string') return detail.message;
+    if (Array.isArray(detail.missing) && detail.missing.length) {
+      return `Still needed before this can be submitted: ${detail.missing.join(', ')}.`;
+    }
+  }
+  return fallback || 'Something went wrong. Please try again.';
 }
 
 async function requestForm<T>(
@@ -209,15 +242,46 @@ async function requestForm<T>(
     }
     const retryAfterHeader = response.headers.get('Retry-After');
     const retryAfterSeconds = retryAfterHeader ? parseInt(retryAfterHeader, 10) : undefined;
-    const detail =
-      typeof data?.detail === 'string' ? data.detail : data?.detail ? JSON.stringify(data.detail) : response.statusText;
-    throw new ApiError(response.status, detail, data, retryAfterSeconds);
+    throw new ApiError(response.status, readableDetail(data, response.statusText), data, retryAfterSeconds);
   }
 
   return data as T;
 }
 
+/**
+ * Fetches a file the API serves as an attachment (CSV exports) and hands
+ * it to the browser as a download. A plain <a href> can't be used: the
+ * access token lives in memory and is sent as a header, never in a URL.
+ */
+async function download(path: string, query?: RequestOptions['query'], retried = false): Promise<string> {
+  const headers: Record<string, string> = {};
+  if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
+  const response = await fetch(buildUrl(path, query), { headers, credentials: 'include' });
+  if (response.status === 401 && !retried && (await tryRefresh())) {
+    return download(path, query, true);
+  }
+  if (!response.ok) {
+    const isJson = response.headers.get('content-type')?.includes('application/json');
+    const data = isJson ? await response.json() : null;
+    throw new ApiError(response.status, readableDetail(data, response.statusText), data);
+  }
+  const disposition = response.headers.get('content-disposition') || '';
+  const match = /filename="?([^";]+)"?/i.exec(disposition);
+  const filename = match?.[1] || path.split('/').pop() || 'download';
+  const blobUrl = URL.createObjectURL(await response.blob());
+  const link = document.createElement('a');
+  link.href = blobUrl;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  // Give the browser a moment to start the download before releasing it.
+  setTimeout(() => URL.revokeObjectURL(blobUrl), 4000);
+  return filename;
+}
+
 export const api = {
+  download,
   get: <T,>(path: string, options?: RequestOptions) => request<T>(path, { ...options, method: 'GET' }),
   post: <T,>(path: string, body?: unknown, options?: RequestOptions) =>
     request<T>(path, { ...options, method: 'POST', body }),

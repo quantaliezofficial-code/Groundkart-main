@@ -149,7 +149,7 @@ export default function ForgotPassword({ onBackToLogin, inModal = false }: Forgo
       {/* Atmospheric background matching homepage */}
       <div className="absolute inset-0 z-0 pointer-events-none">
         <img
-          src="/hero-party.webp"
+          src="/img/occasions/night-parties.webp"
           alt=""
           className="w-full h-full object-cover object-center opacity-30 filter blur-[1.5px] scale-105"
         />

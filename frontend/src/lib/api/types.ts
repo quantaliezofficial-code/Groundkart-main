@@ -7,14 +7,20 @@
  * which prop.
  */
 
-export type UserRole = 'customer' | 'owner' | 'admin';
+export type UserRole = 'customer' | 'owner' | 'admin' | 'broker';
 
 export interface UserMe {
   id: string;
   name: string;
-  email: string;
+  /** Phone is the mandatory identifier; staff-created accounts may have no email. */
+  email: string | null;
+  phone?: string;
   role: UserRole;
   is_verified: boolean;
+  must_change_password?: boolean;
+  /** The single platform owner. Display hint only — every protected
+   * route checks this again on the server. */
+  is_super_admin?: boolean;
 }
 
 export interface AccessTokenResponse {
@@ -284,12 +290,13 @@ export interface AdminAuditLogParams {
 export interface ApiAdminUserView {
   id: string;
   name: string;
-  email: string;
+  email: string | null;
   phone?: string;
   role: UserRole;
   suspended_at: string | null;
   suspension_reason: string | null;
   created_at?: string;
+  is_super_admin?: boolean;
 }
 
 export interface ApiPlatformOverview {
@@ -364,8 +371,12 @@ export interface AdminVenuesParams {
 // for the shape GET /venues (public) also uses.
 export interface ApiAdminVenueView extends ApiVenue {
   owner_name: string;
-  owner_email: string;
+  owner_email: string | null;
   owner_phone?: string;
+  broker_id?: string | null;
+  broker_name?: string | null;
+  referral_code?: string | null;
+  referred_at?: string | null;
   pending_changes?: any;
   old?: any;
   new?: any;

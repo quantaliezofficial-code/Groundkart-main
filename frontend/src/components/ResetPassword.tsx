@@ -98,7 +98,7 @@ export default function ResetPassword() {
       {/* Atmospheric background matching homepage */}
       <div className="absolute inset-0 z-0 pointer-events-none">
         <img
-          src="/hero-party.webp"
+          src="/img/occasions/night-parties.webp"
           alt=""
           className="w-full h-full object-cover object-center opacity-30 filter blur-[1.5px] scale-105"
         />
@@ -198,7 +198,7 @@ export default function ResetPassword() {
 
                 <div className="relative z-10">
                   <div className="flex items-center gap-2 mb-1">
-                    <img src="/logo-icon.png" alt="GroundKart" className="w-5 h-5 object-contain drop-shadow" />
+                    <img src="/logo-icon.webp" alt="GroundKart" className="w-5 h-5 object-contain drop-shadow" />
                     <span className="text-marigold text-[11px] font-bold tracking-wider uppercase">Account Recovery</span>
                   </div>
                   <p className="text-white font-display text-base font-bold">Secure Credential Reset</p>
