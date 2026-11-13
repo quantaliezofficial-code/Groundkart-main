@@ -19,7 +19,8 @@
  *   refresh independently.
  */
 
-const API_URL = (import.meta.env.VITE_API_URL as string) || 'http://localhost:8000';
+export const API_URL: string =
+  (import.meta.env.VITE_API_URL as string | undefined) || (import.meta.env.DEV ? 'http://localhost:8000' : '');
 
 let accessToken: string | null = null;
 
@@ -70,7 +71,7 @@ export interface RequestOptions {
 }
 
 function buildUrl(path: string, query?: RequestOptions['query']): string {
-  const url = new URL(`${API_URL}${path}`);
+  const url = new URL(`${API_URL}${path}`, window.location.origin);
   if (query) {
     for (const [key, value] of Object.entries(query)) {
       if (value !== undefined) url.searchParams.set(key, String(value));

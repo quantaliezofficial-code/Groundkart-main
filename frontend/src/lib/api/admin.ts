@@ -1,4 +1,4 @@
-import { api, getAccessToken, generateUUID } from './client';
+import { api, getAccessToken, generateUUID, API_URL } from './client';
 import type { ApiHomepagePlacement, 
   AdminAuditLogParams,
   AdminBookingsParams,
@@ -68,7 +68,6 @@ export const adminApi = {
 
   viewVerificationDocument: async (verificationId: string): Promise<void> => {
     const token = getAccessToken();
-    const API_URL = (import.meta.env.VITE_API_URL as string) || 'http://localhost:8000';
     const res = await fetch(`${API_URL}/api/v1/admin/owner-verifications/${verificationId}/document`, {
       headers: token ? { Authorization: `Bearer ${token}` } : {},
       credentials: 'include',
@@ -200,7 +199,6 @@ export const adminApi = {
 
   exportTableCsv: async (tableName: string, limit: number = 5000): Promise<string> => {
     const token = getAccessToken();
-    const API_URL = (import.meta.env.VITE_API_URL as string) || 'http://localhost:8000';
     // If VITE_API_URL has /api/v1 at end, remove it
     const rootUrl = API_URL.replace(/\/api\/v1\/?$/, '');
     const res = await fetch(`${rootUrl}/api/v1/admin/db/export/${tableName}?limit=${limit}`, {
