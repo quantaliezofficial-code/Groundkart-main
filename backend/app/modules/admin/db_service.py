@@ -26,6 +26,30 @@ FORBIDDEN_SQL_PATTERN = re.compile(
 )
 
 
+# Columns whose values never leave the database through the studio, the
+# CSV export or the query console: credentials, tokens, 2FA material,
+# encrypted identity and bank numbers, and network identifiers. Full ID
+# numbers have their own audited reveal endpoint.
+SENSITIVE_COLUMN = re.compile(
+    r"(password|passwd|secret|token|totp|recovery|otp|api_key|private_key|_enc$|"
+    r"^identification_number$|^pan$|^gstin$|^account_number$|^ifsc|payout_details|ip_hash|ip_address|user_agent)",
+    re.IGNORECASE,
+)
+HIDDEN = "[hidden]"
+
+
+def _redact_row(row: dict[str, Any]) -> dict[str, Any]:
+    return {k: (HIDDEN if v is not None and SENSITIVE_COLUMN.search(str(k)) else _serialize_value(v)) for k, v in row.items()}
+
+
+def _csv_safe(value: Any) -> Any:
+    """Stop spreadsheet formula injection: a cell starting with = + - @ or a
+    control character is written as text."""
+    if isinstance(value, str) and value[:1] in ("=", "+", "-", "@", "\t", "\r"):
+        return "'" + value
+    return value
+
+
 def _serialize_value(val: Any) -> Any:
     """Serialize database types to JSON-safe primitives."""
     if val is None:
@@ -239,7 +263,7 @@ async def get_table_data(
     serialized_rows = []
     for r in raw_rows:
         row_dict = dict(r._mapping)
-        serialized_rows.append({k: _serialize_value(v) for k, v in row_dict.items()})
+        serialized_rows.append(_redact_row(row_dict))
 
     return {
         "table_name": table_name,
@@ -287,10 +311,7 @@ async def execute_safe_query(session: AsyncSession, sql: str) -> dict:
 
         keys = list(result.keys())
         raw_rows = result.fetchall()
-        serialized_rows = [
-            {k: _serialize_value(v) for k, v in dict(r._mapping).items()}
-            for r in raw_rows
-        ]
+        serialized_rows = [_redact_row(dict(r._mapping)) for r in raw_rows]
 
         return {
             "columns": keys,
@@ -450,7 +471,7 @@ async def export_table_csv(session: AsyncSession, table_name: str, limit: int = 
         writer.writeheader()
         for r in rows:
             row_dict = dict(r._mapping)
-            serialized = {k: _serialize_value(v) for k, v in row_dict.items()}
+            serialized = {k: _csv_safe(v) for k, v in _redact_row(row_dict).items()}
             writer.writerow(serialized)
     else:
         # Just write column headers if empty

@@ -11,11 +11,13 @@ test.describe('S6 Support and Contact Suite @regression', () => {
     await page.locator('#contact-message').fill('We would like to inquire about hosting a weekend corporate championship tournament.');
 
     // Submit
-    const submitBtn = page.getByRole('button', { name: /Submit Inquiry/i });
+    const submitBtn = page.getByRole('button', { name: /Submit Inquiry|Send message/i });
     await submitBtn.click();
 
     // Verify confirmation
     await expect(page.getByText(/Message Received|Thank you/i).first()).toBeVisible({ timeout: 10_000 });
+    // The message is now a real ticket with a number (grievance clock).
+    await expect(page.getByTestId('ticket-number')).toHaveText(/^GK-T-\d{4}-\d{4,}$/);
   });
 
   test('customer can create a support ticket and view it in support portal', async ({ browser, uniqueSuffix }) => {

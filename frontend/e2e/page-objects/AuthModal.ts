@@ -56,6 +56,8 @@ export class AuthModalPO {
     }
     await this.phoneInput.fill(phone);
     await this.passwordInput.fill(pass);
+    // Adults-only rule (D-12): the 18+ box is unticked by default and required.
+    await this.modal.locator('#age-confirm').check();
     await this.submitButton.click();
   }
 

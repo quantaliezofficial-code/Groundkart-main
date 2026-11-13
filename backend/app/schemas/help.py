@@ -153,10 +153,17 @@ class ContactSubmitRequest(BaseModel):
     phone: str | None = Field(None, max_length=20)
     subject: str = Field(..., min_length=2, max_length=200)
     message: str = Field(..., min_length=5, max_length=5000)
+    # general | booking | payment | venue | grievance | content_report |
+    # data_request | partnership | other (mapped in app/modules/support/sla.py)
+    category: str | None = Field(None, max_length=40)
+    booking_reference: str | None = Field(None, max_length=60)
 
 
 class ContactSubmitResponse(BaseModel):
     success: bool
     ticket_id: str | None = None
     enquiry_id: str | None = None
+    ticket_number: str | None = None
+    ack_due_at: datetime | None = None
+    resolve_due_at: datetime | None = None
     message: str

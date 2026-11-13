@@ -58,6 +58,13 @@ class Settings(BaseSettings):
                     raise ValueError(
                         f"In production, CORS origins must not contain localhost or 127.0.0.1: got '{origin}'"
                     )
+            # Field-level encryption key for identity and bank numbers
+            # (DPDP Rules r.6(1)(a)). Never fall back to the dev key.
+            if not self.field_encryption_key:
+                raise ValueError(
+                    "FIELD_ENCRYPTION_KEY must be set in production (32 random bytes, base64). "
+                    "Generate one with: python -c \"import os,base64;print(base64.b64encode(os.urandom(32)).decode())\""
+                )
             # Storage validation in production
             if self.storage_backend == "s3":
                 if not self.s3_bucket_name:
@@ -126,5 +133,34 @@ class Settings(BaseSettings):
     hold_sweep_interval_minutes: int = 5
     idempotency_required: bool = False
     idempotency_retention_days: int = 7
+
+    # --- Compliance and security (docs/compliance/COMPLIANCE_PLAN.md) ---
+    # AES-256-GCM key (base64, 32 bytes) for identity numbers, PAN, GSTIN,
+    # bank account numbers and TOTP secrets. Required in production; in
+    # dev/test a key derived from jwt_secret_key is used so the app runs
+    # without setup (see app/modules/core/crypto.py).
+    field_encryption_key: str | None = None
+    # Comma-separated older keys still accepted for decryption during a
+    # key rotation. New values are always written with field_encryption_key.
+    field_encryption_old_keys: str | None = None
+    # Two-step sign-in for admins. None = follow the environment (required
+    # in production, optional elsewhere). Set true/false to override.
+    admin_2fa_required: bool | None = None
+    # Background retention job (app/modules/privacy/retention.py).
+    # Swagger UI, ReDoc and /openapi.json. None = on in development, off in
+    # production.
+    expose_api_docs: bool | None = None
+    # Admin Database Studio's free-form SQL console (read-only). None = on in
+    # development, off in production, where the table browser (with hidden
+    # sensitive columns and audit logging) is the supported tool.
+    admin_sql_console: bool | None = None
+    retention_job_enabled: bool = True
+    retention_interval_hours: int = 24
+
+    def resolve_admin_2fa_required(self, environment: str | None = None) -> bool:
+        if self.admin_2fa_required is not None:
+            return self.admin_2fa_required
+        env = (environment or self.environment).lower()
+        return env in ("prod", "production")
 
 settings = Settings()

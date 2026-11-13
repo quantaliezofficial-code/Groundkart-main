@@ -1,3 +1,4 @@
+import PrivacyNote from './legal/PrivacyNote';
 import GroundSelect from './ui/GroundSelect';
 import { DashboardShell, MetricCard, SafeImage, EmptyState, StatusBadge as DashboardStatusBadge } from './dashboard';
 import {
@@ -88,7 +89,8 @@ function OwnerOnboardingGate() {
   const submitVerification = useSubmitVerification();
 
     const [businessName, setBusinessName] = useState('');
-  const [identificationType, setIdentificationType] = useState('National ID');
+  const [identificationType, setIdentificationType] = useState('pan');
+  const isAadhaar = identificationType === 'aadhaar';
   const [identificationNumber, setIdentificationNumber] = useState('');
   const [file, setFile] = useState<File | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
@@ -105,6 +107,10 @@ function OwnerOnboardingGate() {
     setFormError(null);
     if (!file) {
       setFormError('Please attach a business/ID verification document.');
+      return;
+    }
+    if (isAadhaar && !/^\d{4}$/.test(identificationNumber.replace(/\s/g, ''))) {
+      setFormError('For Aadhaar, enter only the last 4 digits and upload a masked copy (first 8 digits hidden).');
       return;
     }
     try {
@@ -191,23 +197,30 @@ function OwnerOnboardingGate() {
             value={identificationType}
             onValueChange={setIdentificationType}
             options={[
-              { value: "National ID", label: "National ID" },
-              { value: "Passport", label: "Passport" },
-              { value: "Driving License", label: "Driving License" },
-              { value: "Business Registration", label: "Business Registration" }
+              { value: 'pan', label: 'PAN card' },
+              { value: 'aadhaar', label: 'Aadhaar (masked copy)' },
+              { value: 'passport', label: 'Passport' },
+              { value: 'driving_licence', label: 'Driving licence' },
+              { value: 'voter_id', label: 'Voter ID' },
+              { value: 'business_registration', label: 'Business registration / GST certificate' },
             ]}
             triggerClassName="w-full sm:w-[200px]"
           />
         </label>
         <label className="block">
-          <span className="text-xs font-semibold text-on-surface-variant">Identification Number</span>
+          <span className="text-xs font-semibold text-on-surface-variant">{isAadhaar ? 'Last 4 digits of Aadhaar' : 'Identification number'}</span>
           <input
             value={identificationNumber}
             onChange={(e) => setIdentificationNumber(e.target.value)}
             required
-            placeholder="Enter ID number"
+            inputMode={isAadhaar ? 'numeric' : undefined}
+            maxLength={isAadhaar ? 4 : 40}
+            placeholder={isAadhaar ? '1234' : 'Enter ID number'}
             className="mt-1 w-full rounded-lg border border-ink/10 bg-mist px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-marigold"
           />
+          {isAadhaar && (
+            <span className="mt-1 block text-xs text-on-surface-variant">We never store a full Aadhaar number. Upload a masked Aadhaar (only the last 4 digits visible).</span>
+          )}
         </label>
         <label className="block">
           <span className="text-xs font-semibold text-on-surface-variant">Verification document (PDF, JPEG, or PNG)</span>
@@ -228,6 +241,9 @@ function OwnerOnboardingGate() {
           {submitVerification.isPending && <Loader2 size={15} className="animate-spin" />}
           Submit for review
         </button>
+        <PrivacyNote>
+          Your document and ID number are used only to verify you as a venue owner. They are kept in private storage, the number is encrypted, and only our admin team can see them.
+        </PrivacyNote>
       </form>
     </div>
   );

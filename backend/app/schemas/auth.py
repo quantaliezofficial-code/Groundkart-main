@@ -9,6 +9,13 @@ class SignupRequest(BaseModel):
     phone: str
     password: str = Field(min_length=8, max_length=255)
     role: Literal["customer", "owner"] = "customer"
+    # Adults only (owner decision D-12): an explicit, unticked-by-default
+    # "I confirm I am 18 years or older". Refused (422) unless true.
+    age_confirmed: bool = False
+    # Versions of the Terms and Privacy Notice the person was shown; the
+    # current ones are recorded when omitted.
+    terms_version: str | None = Field(default=None, max_length=20)
+    notice_version: str | None = Field(default=None, max_length=20)
 
     @model_validator(mode="before")
     @classmethod
@@ -73,6 +80,8 @@ class SignupRequest(BaseModel):
 class LoginRequest(BaseModel):
     login_id: str
     password: str
+    # Admins with two-step sign-in: authenticator code or a recovery code.
+    otp: str | None = Field(default=None, max_length=20)
 
 
 class AccessTokenResponse(BaseModel):
@@ -92,6 +101,11 @@ class UserMeResponse(BaseModel):
     # screens the frontend shows; every protected route re-checks it
     # server-side, so this is display information, not an access grant.
     is_super_admin: bool = False
+    two_factor_enabled: bool = False
+    # True when this admin must enrol before using admin screens.
+    two_factor_setup_required: bool = False
+    age_confirmed: bool = False
+    accepted_terms_version: str | None = None
 
 
 class ForgotPasswordRequest(BaseModel):

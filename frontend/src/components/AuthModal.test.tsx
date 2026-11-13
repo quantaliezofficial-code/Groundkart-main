@@ -83,7 +83,7 @@ describe('AuthModal component', () => {
     fireEvent.submit(form);
     
     await waitFor(() => {
-      expect(mockLogin).toHaveBeenCalledWith('test@example.com', 'password123');
+      expect(mockLogin).toHaveBeenCalledWith('test@example.com', 'password123', undefined);
       expect(mockOnSuccess).toHaveBeenCalled();
     });
   });
@@ -225,6 +225,21 @@ describe('AuthModal component', () => {
     });
   });
 
+  it('refuses signup until the unticked 18+ box is confirmed', async () => {
+    render(
+      <AuthModal mode="signup" onClose={mockOnClose} onSwitchMode={mockOnSwitchMode} onSuccess={mockOnSuccess} />
+    );
+    const box = screen.getByLabelText(/I confirm I am 18 years or older/i) as HTMLInputElement;
+    expect(box.checked).toBe(false);
+    fireEvent.change(screen.getByPlaceholderText('Your full name'), { target: { value: 'Ashley Leon' } });
+    fireEvent.change(screen.getByPlaceholderText('you@example.com'), { target: { value: 'ashleyleon92@gmail.com' } });
+    fireEvent.change(screen.getByPlaceholderText('Your phone number'), { target: { value: '9876543210' } });
+    fireEvent.change(screen.getByPlaceholderText('Min. 8 characters'), { target: { value: 'ValidPass123!' } });
+    fireEvent.submit(screen.getByPlaceholderText('Your full name').closest('form')!);
+    expect(await screen.findByRole('alert')).toHaveTextContent(/18 years or older/i);
+    expect(mockSignup).not.toHaveBeenCalled();
+  });
+
   it('successfully submits signup with valid gmail and 10-digit phone', async () => {
     mockSignup.mockResolvedValueOnce({ user: { role: 'client' } });
 
@@ -247,10 +262,11 @@ describe('AuthModal component', () => {
     fireEvent.change(emailInput, { target: { value: 'ashleyleon92@gmail.com' } });
     fireEvent.change(phoneInput, { target: { value: '+91 98765 43210' } });
     fireEvent.change(passwordInput, { target: { value: 'ValidPass123!' } });
+    fireEvent.click(screen.getByLabelText(/I confirm I am 18 years or older/i));
     fireEvent.submit(form);
 
     await waitFor(() => {
-      expect(mockSignup).toHaveBeenCalledWith('Ashley Leon', 'ashleyleon92@gmail.com', 'ValidPass123!', '9876543210');
+      expect(mockSignup).toHaveBeenCalledWith('Ashley Leon', 'ashleyleon92@gmail.com', 'ValidPass123!', '9876543210', true);
       expect(mockOnSuccess).toHaveBeenCalledWith('client');
     });
   });
@@ -280,10 +296,11 @@ describe('AuthModal component', () => {
     fireEvent.change(emailInput, { target: { value: 'ashley@myground.org' } });
     fireEvent.change(phoneInput, { target: { value: '9876543210' } });
     fireEvent.change(passwordInput, { target: { value: 'ValidPass123!' } });
+    fireEvent.click(screen.getByLabelText(/I confirm I am 18 years or older/i));
     fireEvent.submit(form);
 
     await waitFor(() => {
-      expect(mockSignup).toHaveBeenCalledWith('Ashley Owner', 'ashley@myground.org', 'ValidPass123!', '9876543210');
+      expect(mockSignup).toHaveBeenCalledWith('Ashley Owner', 'ashley@myground.org', 'ValidPass123!', '9876543210', true);
       expect(mockOnSuccess).toHaveBeenCalledWith('owner');
     });
   });

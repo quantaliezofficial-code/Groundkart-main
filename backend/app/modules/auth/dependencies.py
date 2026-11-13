@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import Depends, HTTPException
+from fastapi import Depends, HTTPException, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -27,12 +27,34 @@ class CurrentUser:
     every request defeats half the point of using JWTs at all. Routes that
     need the full row (e.g. email for a notification) fetch it themselves."""
 
-    def __init__(self, id: uuid.UUID, role: str):
+    def __init__(self, id: uuid.UUID, role: str, amr: list[str] | None = None):
         self.id = id
         self.role = role
+        self.amr = amr or ["pwd"]
+
+    @property
+    def second_factor(self) -> bool:
+        return "otp" in self.amr
+
+
+def enforce_admin_second_factor(current_user: "CurrentUser") -> None:
+    """DPDP Rules r.6(1)(b) access control + checklist item 8.2: admins
+    must use two-step sign-in where it is required (production default).
+    Enrolment routes use get_current_user directly so an admin can still
+    set it up."""
+    from app.config import settings
+
+    if current_user.role == "admin" and settings.resolve_admin_2fa_required() and not current_user.second_factor:
+        raise HTTPException(status_code=403, detail="two_factor_setup_required")
+
+
+# Routes an admin without a second factor may still use: sign-in, enrolment
+# and their own profile. Everything else returns two_factor_setup_required.
+_MFA_EXEMPT_PREFIXES = ("/api/v1/auth/", "/auth/", "/api/v1/users/me")
 
 
 async def get_current_user(
+    request: Request,
     credentials: HTTPAuthorizationCredentials | None = Depends(_bearer_scheme),
 ) -> CurrentUser:
     if credentials is None:
@@ -41,7 +63,10 @@ async def get_current_user(
         payload = decode_access_token(credentials.credentials)
     except InvalidTokenError:
         raise HTTPException(status_code=401, detail="Invalid or expired token")
-    return CurrentUser(id=uuid.UUID(payload["sub"]), role=payload["role"])
+    user = CurrentUser(id=uuid.UUID(payload["sub"]), role=payload["role"], amr=payload.get("amr"))
+    if not request.url.path.startswith(_MFA_EXEMPT_PREFIXES):
+        enforce_admin_second_factor(user)
+    return user
 
 
 async def get_current_user_optional(
@@ -57,7 +82,7 @@ async def get_current_user_optional(
         payload = decode_access_token(credentials.credentials)
     except InvalidTokenError:
         return None
-    return CurrentUser(id=uuid.UUID(payload["sub"]), role=payload["role"])
+    return CurrentUser(id=uuid.UUID(payload["sub"]), role=payload["role"], amr=payload.get("amr"))
 
 
 def require_role(*allowed_roles: str):
@@ -68,6 +93,7 @@ def require_role(*allowed_roles: str):
     async def _dependency(current_user: CurrentUser = Depends(get_current_user)) -> CurrentUser:
         if current_user.role not in allowed_roles:
             raise HTTPException(status_code=403, detail="You don't have access to do this")
+        enforce_admin_second_factor(current_user)
         return current_user
 
     return _dependency

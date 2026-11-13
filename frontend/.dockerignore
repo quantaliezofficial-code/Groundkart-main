@@ -4,3 +4,9 @@ dist/
 .env.*
 !.env.example
 coverage/
+.git
+test-results/
+playwright-report/
+.auth/
+e2e/
+*.map

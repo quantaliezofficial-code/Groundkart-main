@@ -263,6 +263,18 @@ export async function authenticateContext(
   if (!res.ok()) {
     throw new Error(`Failed to authenticate ${role} (${creds.email}): ${res.status()} ${await res.text()}`);
   }
+  await acceptCurrentNotice(context, apiUrl, (await res.json()).access_token);
+}
+
+/** Demo accounts created before the Privacy Notice existed see the
+ * re-acceptance banner. Accept it once, as the person would, so it does not
+ * sit over the pages the regression suites click through. */
+export async function acceptCurrentNotice(context: any, apiUrl: string, token: string): Promise<void> {
+  const headers = { Authorization: `Bearer ${token}` };
+  const me = await (await context.request.get(`${apiUrl}/api/v1/users/me`, { headers })).json();
+  if (me.role !== 'admin' && (me.accepted_terms_version !== '1.0' || !me.age_confirmed)) {
+    await context.request.post(`${apiUrl}/api/v1/me/consents/accept`, { headers, data: { accept: true, age_confirmed: true } });
+  }
 }
 
 type CustomFixtures = {

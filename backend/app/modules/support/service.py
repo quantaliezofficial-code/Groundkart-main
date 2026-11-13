@@ -27,6 +27,7 @@ from app.models.core import (
     Venue,
 )
 from app.modules.notifications.service import notify
+from app.modules.support import sla
 from app.modules.support.domain import transition_ticket_status
 
 
@@ -34,8 +35,9 @@ from app.modules.support.domain import transition_ticket_status
 
 async def create_ticket(
     session: AsyncSession,
-    creator_id: uuid.UUID,
+    creator_id: uuid.UUID | None,
     *,
+    guest_enquiry_id: uuid.UUID | None = None,
     subject: str,
     description: str,
     category: str = "general",
@@ -198,9 +200,12 @@ async def create_ticket(
             help_article_version=help_article_version,
             help_section=help_section,
             help_excerpt=help_excerpt,
+            guest_enquiry_id=guest_enquiry_id,
         )
         session.add(ticket)
         await session.flush()
+        # Ticket number and grievance clocks (app/modules/support/sla.py).
+        await sla.stamp_new_ticket(session, ticket)
 
         # Initial event
         event = TicketEvent(
@@ -237,7 +242,7 @@ async def create_ticket(
             for obj in notify(
                 admin.id,
                 type="support_ticket.created",
-                message=f"New support ticket: {subject}",
+                message=f"New support ticket {ticket.ticket_number}: {subject}",
                 entity_type="support_ticket",
                 entity_id=ticket.id,
             ):
@@ -401,19 +406,22 @@ async def update_ticket(
             session.add(event)
             changes["status"] = {"old": old_status, "new": status}
 
+            if ticket.acknowledged_at is None:
+                ticket.acknowledged_at = now
             if status == "resolved":
                 ticket.resolved_at = now
             elif status == "closed":
                 ticket.closed_at = now
 
-            # Notify ticket creator about status change
-            for obj in notify(
+            # Notify ticket creator about status change (guest tickets have
+            # no account; the team replies to the enquiry's email/phone).
+            for obj in ([] if ticket.creator_id is None else notify(
                 ticket.creator_id,
                 type="support_ticket.status_changed",
                 message=f"Your ticket \"{ticket.subject}\" status changed to {status}",
                 entity_type="support_ticket",
                 entity_id=ticket.id,
-            ):
+            )):
                 session.add(obj)
 
         if priority is not None and priority != ticket.priority:
@@ -528,6 +536,8 @@ async def add_comment(
         session.add(event)
 
         ticket.updated_at = datetime.now(timezone.utc)
+        if actor_role == "admin" and not internal and ticket.acknowledged_at is None:
+            ticket.acknowledged_at = ticket.updated_at
 
         # Notify the other party for non-internal comments
         if not internal:
@@ -545,7 +555,7 @@ async def add_comment(
                         entity_id=ticket.id,
                     ):
                         session.add(obj)
-            else:
+            elif ticket.creator_id is not None:
                 # Admin/owner commenting — notify the creator
                 for obj in notify(
                     ticket.creator_id,

@@ -287,7 +287,7 @@ async def test_booking_purpose_validation_and_pricing(client, test_session_facto
         "/api/v1/bookings",
         json={
             "inventory_unit_id": unit_id,
-            "guest_name": "Bride Groom",
+            "age_confirmed": True, "guest_name": "Bride Groom",
             "guest_email": "wedding@example.com",
             "purpose_id": str(uuid.uuid4()),
             "rental_mode": "full_day",
@@ -301,7 +301,7 @@ async def test_booking_purpose_validation_and_pricing(client, test_session_facto
         "/api/v1/bookings",
         json={
             "inventory_unit_id": unit_id,
-            "guest_name": "Bride Groom",
+            "age_confirmed": True, "guest_name": "Bride Groom",
             "guest_email": "wedding@example.com",
             "purpose_id": wedding_purpose_id,
             "rental_mode": "hour",
@@ -315,7 +315,7 @@ async def test_booking_purpose_validation_and_pricing(client, test_session_facto
         "/api/v1/bookings",
         json={
             "inventory_unit_id": unit_id,
-            "guest_name": "Bride Groom",
+            "age_confirmed": True, "guest_name": "Bride Groom",
             "guest_email": "wedding@example.com",
             "purpose_id": wedding_purpose_id,
             "rental_mode": "full_day",
@@ -329,7 +329,7 @@ async def test_booking_purpose_validation_and_pricing(client, test_session_facto
         "/api/v1/bookings",
         json={
             "inventory_unit_id": unit_id,
-            "guest_name": "Bride Groom",
+            "age_confirmed": True, "guest_name": "Bride Groom",
             "guest_email": "wedding@example.com",
             "guest_phone": "9998887776",
             "purpose_id": wedding_purpose_id,
@@ -398,7 +398,7 @@ async def test_availability_and_overlap_guard(client, test_session_factory):
         "/api/v1/bookings",
         json={
             "inventory_unit_id": hour_unit_1["id"],
-            "guest_name": "Morning Player",
+            "age_confirmed": True, "guest_name": "Morning Player",
             "guest_email": "player@example.com",
             "rental_mode": "hour",
         },
@@ -420,7 +420,7 @@ async def test_availability_and_overlap_guard(client, test_session_factory):
         "/api/v1/bookings",
         json={
             "inventory_unit_id": full_day_unit["id"],
-            "guest_name": "Late Booker",
+            "age_confirmed": True, "guest_name": "Late Booker",
             "guest_email": "late@example.com",
             "rental_mode": "full_day",
         },

@@ -1,0 +1,16 @@
+Photos from Unsplash (https://unsplash.com/license), downloaded by the owner and
+self-hosted. Resized, cropped and re-encoded as WebP with metadata removed.
+
+hero            Abby Savage           (abby-savage-zNsSwsuyP3A)
+occ-weddings    Soulseeker Creative   (bt5Br2xp1pU)
+occ-corporate   Christina @ wocintechchat.com (ftCWdZOFZqo)
+occ-sports      Dmitry Ant            (lTydd5V_cUE)
+occ-parties     Al Elmes              (ULHxWq8reao)
+occ-resorts     Bilderboken           (rlwE8f8anOc)
+occ-outdoor     Fabio Fistarol        (qai_Clhyq0s)
+owners          Ibrahim Boran         (m8YjB0noWiY)
+placeholder     William Smith         (ePQNHB_z8Cs)
+celebration     Desiray Green         (4OjvrEGyf6A)
+
+Further photos supplied in groundkartunsplashpics.zip are kept out of the build
+until needed.

@@ -34,11 +34,15 @@ def verify_password(plain: str, hashed: str) -> bool:
         return False
 
 
-def create_access_token(user_id: uuid.UUID, role: str) -> str:
+def create_access_token(user_id: uuid.UUID, role: str, amr: list[str] | None = None) -> str:
+    """amr ("authentication methods references", RFC 8176) records how the
+    session was proven: ["pwd"] or ["pwd", "otp"]. Admin routes require
+    "otp" when two-step sign-in is enforced (app/modules/auth/dependencies.py)."""
     now = datetime.now(timezone.utc)
     payload = {
         "sub": str(user_id),
         "role": role,
+        "amr": amr or ["pwd"],
         "iat": now,
         "exp": now + ACCESS_TOKEN_TTL,
     }

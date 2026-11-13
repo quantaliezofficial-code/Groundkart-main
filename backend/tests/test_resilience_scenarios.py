@@ -56,7 +56,7 @@ async def test_scenario_1_double_click_with_idempotency_key(
     idem_key = f"double-click-{uuid.uuid4()}"
     payload = {
         "inventory_unit_id": str(seeded_unit),
-        "guest_name": "Same User",
+        "age_confirmed": True, "guest_name": "Same User",
         "guest_email": "sameuser@example.com",
         "guest_phone": "+919876543210",
     }
@@ -114,7 +114,7 @@ async def test_scenario_1_double_click_without_idempotency_key(
     """
     payload = {
         "inventory_unit_id": str(seeded_unit),
-        "guest_name": "Double Clicker",
+        "age_confirmed": True, "guest_name": "Double Clicker",
         "guest_email": "doubleclick@example.com",
         "guest_phone": "+919876543211",
     }
@@ -202,7 +202,7 @@ async def test_scenario_2_concurrent_slot_competition_mixed_users(
     for i in range(10):
         payload = {
             "inventory_unit_id": str(seeded_unit),
-            "guest_name": f"Guest {i}",
+            "age_confirmed": True, "guest_name": f"Guest {i}",
             "guest_email": f"guest_{i}_{uuid.uuid4().hex[:6]}@example.com",
             "guest_phone": f"+919922{i:02d}{1000 + i:04d}",
         }
@@ -492,7 +492,7 @@ async def test_scenario_4a_retry_after_lost_response(
     idem_key = f"retry-timeout-{uuid.uuid4()}"
     payload = {
         "inventory_unit_id": str(seeded_unit),
-        "guest_name": "Timeout User",
+        "age_confirmed": True, "guest_name": "Timeout User",
         "guest_email": "timeout@example.com",
         "guest_phone": "+919876543220",
     }
@@ -540,7 +540,7 @@ async def test_scenario_4b_same_key_different_payload_gives_422(
     idem_key = f"mismatch-{uuid.uuid4()}"
     payload_a = {
         "inventory_unit_id": str(seeded_unit),
-        "guest_name": "Original Name",
+        "age_confirmed": True, "guest_name": "Original Name",
         "guest_email": "original@example.com",
         "guest_phone": "+919876543221",
     }
@@ -552,7 +552,7 @@ async def test_scenario_4b_same_key_different_payload_gives_422(
     # Second request with same key but different payload
     payload_b = {
         "inventory_unit_id": str(seeded_unit),
-        "guest_name": "Mutated Name",
+        "age_confirmed": True, "guest_name": "Mutated Name",
         "guest_email": "mutated@example.com",
         "guest_phone": "+919876543221",
     }
@@ -579,7 +579,7 @@ async def test_scenario_4c_expired_key_gives_clear_error(
     headers = {"Idempotency-Key": idem_key}
     payload = {
         "inventory_unit_id": str(seeded_unit),
-        "guest_name": "Expired Test",
+        "age_confirmed": True, "guest_name": "Expired Test",
         "guest_email": "expired@example.com",
         "guest_phone": "+919876543222",
     }
@@ -627,7 +627,7 @@ async def test_scenario_4d_concurrent_in_progress_key_returns_409_retry_after(
     idem_key = f"in-progress-{uuid.uuid4()}"
     payload = {
         "inventory_unit_id": str(seeded_unit),
-        "guest_name": "In Progress Test",
+        "age_confirmed": True, "guest_name": "In Progress Test",
         "guest_email": "inprogress@example.com",
         "guest_phone": "+919876543223",
     }
@@ -1038,7 +1038,7 @@ async def test_scenario_16_guest_key_collision_refused(
 
     payload_guest1 = {
         "inventory_unit_id": str(seeded_unit),
-        "guest_name": "Guest One",
+        "age_confirmed": True, "guest_name": "Guest One",
         "guest_email": "guest1@example.com",
         "guest_phone": "+919876543231",
     }
@@ -1047,7 +1047,7 @@ async def test_scenario_16_guest_key_collision_refused(
 
     payload_guest2 = {
         "inventory_unit_id": str(seeded_unit),
-        "guest_name": "Guest Two Attacker",
+        "age_confirmed": True, "guest_name": "Guest Two Attacker",
         "guest_email": "guest2@example.com",
         "guest_phone": "+919876543232",
     }

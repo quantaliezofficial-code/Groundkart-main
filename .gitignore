@@ -87,3 +87,6 @@ temp_reference/
 skills-lock.json
 design-assets/
 backend/scripts/seed_data/generated_images/
+
+# Pre-migration database backups contain personal data in clear text
+backend/backups/

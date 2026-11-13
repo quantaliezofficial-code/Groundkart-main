@@ -39,7 +39,12 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
 
   const showToast = useCallback((message: string, type: ToastType = 'info', duration = 5000) => {
     const id = Math.random().toString(36).slice(2, 9);
-    setToasts(prev => [...prev, { id, message, type }]);
+    // Never stack copies of the same message (a repeated click or a retried
+    // request), and never show more than three at once.
+    setToasts(prev => {
+      if (prev.some(t => t.message === message && t.type === type)) return prev;
+      return [...prev, { id, message, type }].slice(-3);
+    });
 
     if (duration > 0) {
       setTimeout(() => {

@@ -1,6 +1,8 @@
 import { AlertCircle, ArrowRight, Eye, EyeOff, Loader2, Lock, Mail, Phone, Sparkles, User as UserIcon, X } from 'lucide-react';
 import React, { useState, useEffect, useRef } from 'react';
 import { ApiError } from '../lib/api/client';
+import AgeDeclaration, { AGE_REQUIRED } from './legal/AgeDeclaration';
+import PrivacyNote from './legal/PrivacyNote';
 import { useAuth } from '../lib/auth';
 import ForgotPassword from './ForgotPassword';
 
@@ -11,6 +13,12 @@ export function validateEmail(raw: string): { isValid: boolean; message: string;
   const trimmed = raw.trim();
   if (!trimmed) {
     return { isValid: false, message: 'Please enter your email address.', cleaned: '' };
+  }
+
+  // Addresses longer than 254 characters are invalid anyway (RFC 5321); the
+  // cap also keeps the pattern below from being fed pathological input.
+  if (trimmed.length > 254) {
+    return { isValid: false, message: 'Please enter a valid email address.', cleaned: trimmed };
   }
 
   // RFC-compliant email pattern matching username@domain.tld
@@ -128,6 +136,10 @@ export default function AuthModal({ mode, onClose, onSwitchMode, onSuccess }: Au
   const [error, setError] = useState<string | null>(null);
   const [isVisible, setIsVisible] = useState(false);
   const [isForgot, setIsForgot] = useState(false);
+  const [ageConfirmed, setAgeConfirmed] = useState(false);
+  const [ageError, setAgeError] = useState<string | null>(null);
+  const [otp, setOtp] = useState('');
+  const [needOtp, setNeedOtp] = useState(false);
   const emailRef = useRef<HTMLInputElement>(null);
   const nameRef = useRef<HTMLInputElement>(null);
 
@@ -184,9 +196,14 @@ export default function AuthModal({ mode, onClose, onSwitchMode, onSuccess }: Au
         return;
       }
 
+      if (!ageConfirmed) {
+        setAgeError(AGE_REQUIRED);
+        return;
+      }
+
       setIsSubmitting(true);
       try {
-        await signup(name.trim(), emailCheck.cleaned, password, phoneCheck.cleaned);
+        await signup(name.trim(), emailCheck.cleaned, password, phoneCheck.cleaned, true);
         onSuccess(accountType);
       } catch (err) {
         if (err instanceof ApiError) {
@@ -212,10 +229,13 @@ export default function AuthModal({ mode, onClose, onSwitchMode, onSuccess }: Au
 
     setIsSubmitting(true);
     try {
-      await login(email.trim(), password);
+      await login(email.trim(), password, needOtp ? otp.trim() : undefined);
       onSuccess();
     } catch (err) {
-      if (err instanceof ApiError) {
+      if (err instanceof ApiError && err.detail === 'two_factor_required') {
+        // Admin account with two-step sign-in: ask for the code.
+        setNeedOtp(true);
+      } else if (err instanceof ApiError) {
         setError(err.detail);
       } else {
         setError('Something went wrong. Please try again.');
@@ -272,11 +292,7 @@ export default function AuthModal({ mode, onClose, onSwitchMode, onSuccess }: Au
             <h2 id="auth-modal-title" className="font-display text-[22px] font-semibold text-chalk leading-tight">
               {isForgot ? 'Reset password' : isSignup ? 'Create your account' : 'Welcome back'}
             </h2>
-            {isSignup && (
-              <p className="text-chalk/75 text-xs mt-1">
-                By signing up, you agree to our <a href="/terms" target="_blank" className="underline text-chalk font-medium">Terms of Service</a> & <a href="/privacy" target="_blank" className="underline text-chalk font-medium">Privacy Policy</a>
-              </p>
-            )}
+            {isSignup && <p className="text-chalk/75 text-xs mt-1">For adults aged 18 and over.</p>}
           </div>
         </div>
 
@@ -294,7 +310,7 @@ export default function AuthModal({ mode, onClose, onSwitchMode, onSuccess }: Au
                 </div>
               )}
 
-              <form onSubmit={handleSubmit} className="space-y-4">
+              <form onSubmit={handleSubmit} className="space-y-4" data-testid={isSignup ? 'signup-form' : 'login-form'}>
             {/* Name field (signup only) */}
             {isSignup && (
               <div className="space-y-1.5">
@@ -475,6 +491,37 @@ export default function AuthModal({ mode, onClose, onSwitchMode, onSuccess }: Au
               )}
             </div>
 
+            {!isSignup && needOtp && (
+              <div className="space-y-1.5">
+                <label htmlFor="auth-otp" className="block text-[13px] font-semibold text-ink/70">
+                  Two-step code
+                </label>
+                <input
+                  id="auth-otp"
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  autoFocus
+                  value={otp}
+                  onChange={(e) => setOtp(e.target.value)}
+                  placeholder="6-digit code or a recovery code"
+                  className="w-full rounded-xl border border-ink/10 bg-mist/50 px-4 py-3 text-sm tracking-widest text-ink focus:border-pitch focus:outline-none focus:ring-2 focus:ring-pitch/20"
+                />
+                <p className="text-xs text-on-surface-variant">Open your authenticator app and enter the code for GroundKart.</p>
+              </div>
+            )}
+
+            {isSignup && (
+              <AgeDeclaration
+                id="age-confirm"
+                checked={ageConfirmed}
+                onChange={(v) => {
+                  setAgeConfirmed(v);
+                  if (v) setAgeError(null);
+                }}
+                error={ageError}
+              />
+            )}
+
             {/* Submit button */}
             <button
               type="submit"
@@ -491,12 +538,13 @@ export default function AuthModal({ mode, onClose, onSwitchMode, onSuccess }: Au
               )}
             </button>
             {isSignup && (
-              <p className="text-2xs text-on-surface-variant text-center mt-3 leading-relaxed">
-                By creating an account, you agree to our{' '}
-                <a href="/terms" target="_blank" rel="noreferrer" className="text-pitch underline font-medium">Terms of Service</a>{' '}
-                and{' '}
-                <a href="/privacy" target="_blank" rel="noreferrer" className="text-pitch underline font-medium">Privacy Policy</a>.
-              </p>
+              <div className="mt-3 space-y-2">
+                <p className="text-xs text-on-surface-variant leading-relaxed">
+                  By creating an account, you agree to the{' '}
+                  <a href="/terms" target="_blank" rel="noopener" className="text-pitch underline font-medium">Terms of Service</a>.
+                </p>
+                <PrivacyNote>We use your name, phone and email to create your account and contact you about your bookings. No marketing messages.</PrivacyNote>
+              </div>
             )}
           </form>
 

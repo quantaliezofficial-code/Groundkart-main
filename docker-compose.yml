@@ -4,12 +4,29 @@
 #   docker compose up -d --build
 #   docker compose exec api python -m scripts.admin_setup   # first super admin
 #
-# Only the web container publishes a port. Put TLS in front of it
-# (deploy/nginx-host.conf, Caddy, or Hostinger's proxy) and point the domain there.
+# On the Hostinger VPS this runs in /home/deploy/apps/groundkart and is
+# deployed by .github/workflows/deploy.yml (docs/09-operations-and-deployment/
+# DEPLOYMENT.md). Ports are bound to 127.0.0.1 only; the host's nginx
+# (deploy/nginx-host.conf) terminates TLS and proxies to them. The defaults
+# (web 3002, api 5001) do not clash with Exotique (3001, 5000).
+#
+# NEVER run "docker compose down -v": it deletes the database and uploads.
+# Container logs (API and web access logs) rotate at 50 MB x 20 files. Ship
+# them to the host's log store or keep the volume long enough for the
+# 365-day retention in docs/compliance/drafts/retention-schedule.md.
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "50m"
+    max-file: "20"
+
+name: groundkart
+
 services:
   db:
     image: postgres:16-alpine
     restart: unless-stopped
+    logging: *default-logging
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-groundkart}
       POSTGRES_USER: ${POSTGRES_USER:-groundkart}
@@ -25,18 +42,24 @@ services:
   api:
     build: ./backend
     restart: unless-stopped
+    logging: *default-logging
     depends_on:
       db:
         condition: service_healthy
     env_file: .env
     environment:
       ENVIRONMENT: production
-      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-groundkart}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-groundkart}
+      # Set DATABASE_URL in .env only when using the VPS's shared PostgreSQL
+      # (DB_MODE=shared, deploy/hostinger/compose.shared-postgres.yml).
+      DATABASE_URL: ${DATABASE_URL:-postgresql+asyncpg://${POSTGRES_USER:-groundkart}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-groundkart}}
       UPLOADS_DIR: /data/uploads
       PRIVATE_UPLOADS_DIR: /data/private-uploads
     volumes:
       - uploads:/data/uploads
       - private_uploads:/data/private-uploads
+    # Loopback only: used by the deploy health check and the host nginx.
+    ports:
+      - "127.0.0.1:${API_PORT:-5001}:8000"
 
   web:
     build:
@@ -45,10 +68,11 @@ services:
         VITE_API_URL: ""                      # same origin: nginx proxies /api
         VITE_SITE_URL: ${PUBLIC_APP_URL:?set PUBLIC_APP_URL in .env}
     restart: unless-stopped
+    logging: *default-logging
     depends_on:
       - api
     ports:
-      - "${WEB_PORT:-8080}:80"
+      - "127.0.0.1:${WEB_PORT:-3002}:80"
 
   # Nightly logical backup kept for 14 days in the "backups" volume.
   backup:

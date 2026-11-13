@@ -98,7 +98,7 @@ export default function ResetPassword() {
       {/* Atmospheric background matching homepage */}
       <div className="absolute inset-0 z-0 pointer-events-none">
         <img
-          src="/img/occasions/night-parties.webp"
+          src="/img/photos/celebration-900.webp"
           alt=""
           className="w-full h-full object-cover object-center opacity-30 filter blur-[1.5px] scale-105"
         />

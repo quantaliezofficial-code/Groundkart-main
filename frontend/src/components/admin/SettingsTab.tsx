@@ -4,6 +4,7 @@ import { platformApi, type PlatformSettings } from '../../lib/api/platform';
 import { useAuth } from '../../lib/auth';
 import { dateTime, errorText } from '../../lib/format';
 import { Button, Field, Notice, Panel, inputClass } from '../dashboard/kit';
+import LegalProfilePanel from './LegalProfilePanel';
 
 /**
  * The platform's business rules. Every change is audited with its before
@@ -55,6 +56,7 @@ export default function SettingsTab() {
   if (!form) return <div className="h-64 rounded-2xl shimmer" />;
 
   return (
+    <div className="space-y-6">
     <Panel
       title="Booking, refund and payout rules"
       description={settings.data ? `Last changed ${dateTime(settings.data.updated_at)}. Every change is recorded in the audit log.` : undefined}
@@ -89,5 +91,7 @@ export default function SettingsTab() {
         </Button>
       </form>
     </Panel>
+    <LegalProfilePanel />
+    </div>
   );
 }

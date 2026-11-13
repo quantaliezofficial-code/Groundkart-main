@@ -32,6 +32,11 @@ class BookingCreateRequest(BaseModel):
     rental_mode: Literal["hour", "half_day", "full_day"] | None = None
     guest_count: int | None = Field(default=None, gt=0)
     customer_notes: str | None = Field(default=None, max_length=1000)
+    # Adults only: required for guest checkout; recorded for signed-in users
+    # who have not confirmed yet (accounts created before 10 Nov 2026).
+    age_confirmed: bool = False
+    terms_version: str | None = Field(default=None, max_length=20)
+    notice_version: str | None = Field(default=None, max_length=20)
 
     @model_validator(mode="after")
     def guest_fields_come_together(self) -> "BookingCreateRequest":

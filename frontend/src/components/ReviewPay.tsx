@@ -6,6 +6,9 @@ import type { BookingCreateResponse } from '../lib/api/types';
 import type { UserMe } from '../lib/api/types';
 import { Venue } from '../types';
 import type { BookingMeta } from './DetailView';
+import { LEGAL_VERSIONS, fact, useLegalProfile } from '../lib/legal';
+import AgeDeclaration, { AGE_REQUIRED } from './legal/AgeDeclaration';
+import PrivacyNote from './legal/PrivacyNote';
 
 interface ReviewPayProps {
   venue: Venue;
@@ -24,6 +27,9 @@ interface ReviewPayProps {
       guest_count?: number;
       customer_notes?: string;
       idempotencyKey?: string;
+      age_confirmed?: boolean;
+      terms_version?: string;
+      notice_version?: string;
     }
   ) => Promise<BookingCreateResponse>;
   bookingMeta?: BookingMeta | null;
@@ -49,6 +55,12 @@ export default function ReviewPay({
   const [result, setResult] = useState<BookingCreateResponse | null>(null);
   const [copied, setCopied] = useState(false);
   const [showPolicy, setShowPolicy] = useState(false);
+  const { data: legal } = useLegalProfile();
+  // Guests, and accounts created before the 18+ rule, confirm here.
+  const needsAge = !currentUser || !currentUser.age_confirmed;
+  const [ageConfirmed, setAgeConfirmed] = useState(false);
+  const [ageError, setAgeError] = useState<string | null>(null);
+  const tiers = legal?.booking_terms;
   const idempotencyKeyRef = React.useRef<string>(
     typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `idem-${Date.now()}-${Math.random().toString(36).slice(2)}`
   );
@@ -67,6 +79,11 @@ export default function ReviewPay({
       submittingRef.current = false;
       return;
     }
+    if (needsAge && !ageConfirmed) {
+      setAgeError(AGE_REQUIRED);
+      submittingRef.current = false;
+      return;
+    }
     setError(null);
     setIsProcessing(true);
     try {
@@ -80,6 +97,9 @@ export default function ReviewPay({
           guest_count: guestCount ? Number(guestCount) : undefined,
           customer_notes: customerNotes.trim() || undefined,
           idempotencyKey: idempotencyKeyRef.current,
+          ...(needsAge ? { age_confirmed: true } : {}),
+          terms_version: LEGAL_VERSIONS.terms,
+          notice_version: LEGAL_VERSIONS.notice,
         }
       );
       setResult(res);
@@ -406,6 +426,7 @@ export default function ReviewPay({
                   className="w-full bg-mist border border-ink/10 rounded-xl p-3 font-sans text-sm text-ink focus:ring-2 focus:ring-pitch/15 focus:border-pitch/30 outline-none transition ease-out resize-none"
                   placeholder="Any special requests, equipment requirements, or instructions..."
                 />
+                <p className="text-xs text-on-surface-variant">Shared with the venue owner. Please don't include children's personal details.</p>
               </div>
             </div>
           </div>
@@ -423,6 +444,11 @@ export default function ReviewPay({
                 <p className="font-sans text-xs sm:text-sm text-pitch leading-relaxed">
                   This isn't an instant card checkout. Submitting this request holds your slot; our team confirms payment and finalizes your booking from there.
                 </p>
+              </div>
+              <div data-testid="payment-modes" className="mt-3 rounded-xl bg-mist p-4 text-sm">
+                <p className="font-semibold text-ink">Accepted payment modes</p>
+                <p className="mt-1 text-on-surface-variant">{fact(legal, 'payment_modes', 'accepted payment modes')}</p>
+                <p className="mt-1 text-xs text-on-surface-variant">We never ask for card details on this website.</p>
               </div>
             </div>
 
@@ -446,19 +472,22 @@ export default function ReviewPay({
                     <div className="p-4">
                       <ul className="space-y-3 font-sans text-sm text-on-surface-variant">
                         <li className="flex justify-between border-b border-ink/5 pb-2">
-                          <span>Up to 48 hours before</span>
-                          <span className="font-medium text-pitch">Free Cancellation</span>
+                          <span>{tiers ? `${tiers.full_refund_hours} hours or more before` : 'Well before the start'}</span>
+                          <span className="font-medium text-pitch">Full refund</span>
                         </li>
                         <li className="flex justify-between border-b border-ink/5 pb-2">
-                          <span>24–48 hours before</span>
-                          <span className="font-medium text-marigold">50% Refund</span>
+                          <span>{tiers ? `${tiers.partial_refund_hours}–${tiers.full_refund_hours} hours before` : 'Closer to the start'}</span>
+                          <span className="font-medium text-marigold">{tiers ? `${tiers.partial_refund_percent}% refund` : 'Partial refund'}</span>
                         </li>
                         <li className="flex justify-between">
-                          <span>Inside 24 hours</span>
-                          <span className="font-medium text-clay">No Refund</span>
+                          <span>{tiers ? `Less than ${tiers.partial_refund_hours} hours before` : 'At the last minute'}</span>
+                          <span className="font-medium text-clay">No refund</span>
                         </li>
                       </ul>
-                      <p className="font-sans text-xs mt-4 italic">Refunds are calculated automatically the moment you cancel.</p>
+                      <p className="font-sans text-xs mt-4">
+                        If the venue cancels, you get a full refund. Read the{' '}
+                        <a href="/refunds" target="_blank" rel="noopener" className="font-medium text-pitch underline underline-offset-2">Refund and Cancellation Policy</a>.
+                      </p>
                     </div>
                   </motion.div>
                 )}
@@ -504,25 +533,52 @@ export default function ReviewPay({
             </div>
 
             <div className="p-6">
-              <div className="space-y-4 font-sans text-sm text-on-surface-variant">
+              <div data-testid="price-breakup" className="space-y-3 font-sans text-sm text-on-surface-variant">
                 <div className="flex justify-between items-center">
                   <span>
+                    Venue charge ·{' '}
                     {bookingMeta?.rentalMode === 'half_day'
-                      ? 'Half-day rate'
+                      ? 'half day'
                       : bookingMeta?.rentalMode === 'full_day'
-                      ? 'Full-day rate'
-                      : 'Hourly rate'}
+                      ? 'full day'
+                      : 'per slot'}
                   </span>
                   <span className="font-mono text-ink font-medium">₹{finalPrice.toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span>Platform fee</span>
+                  <span className="font-mono text-ink font-medium">₹{(legal?.platform_fee ?? 0).toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between gap-4">
+                  <span>Taxes</span>
+                  <span className="text-right text-xs leading-5">{fact(legal, 'tax_statement', 'tax statement')}</span>
+                </div>
+                <div className="flex justify-between items-center pt-1 font-semibold text-ink">
+                  <span>Total</span>
+                  <span className="font-mono">₹{(finalPrice + (legal?.platform_fee ?? 0)).toFixed(2)}</span>
                 </div>
               </div>
 
               <div className="h-px bg-ink/10 w-full my-5" />
 
-              <div className="flex justify-between items-end mb-6 bg-marigold/5 p-4 rounded-xl border border-marigold/10">
-                <span className="font-sans text-sm font-bold text-ink">Total Amount</span>
-                <span className="font-display text-2xl text-marigold font-bold">₹{finalPrice.toFixed(2)}</span>
+              <div className="flex justify-between items-end mb-5 bg-marigold/5 p-4 rounded-xl border border-marigold/10">
+                <span className="font-sans text-sm font-bold text-ink">Total amount</span>
+                <span className="font-display text-2xl text-marigold font-bold">₹{(finalPrice + (legal?.platform_fee ?? 0)).toFixed(2)}</span>
               </div>
+
+              {needsAge && (
+                <div className="mb-4">
+                  <AgeDeclaration
+                    id="checkout-age-confirm"
+                    checked={ageConfirmed}
+                    onChange={(v) => {
+                      setAgeConfirmed(v);
+                      if (v) setAgeError(null);
+                    }}
+                    error={ageError}
+                  />
+                </div>
+              )}
 
               <motion.button
                 data-testid="request-booking-btn"
@@ -546,9 +602,16 @@ export default function ReviewPay({
                 )}
               </motion.button>
 
+              <p className="mt-4 text-xs leading-5 text-on-surface-variant">
+                By requesting this booking you agree to the{' '}
+                <a href="/terms" target="_blank" rel="noopener" className="font-medium text-pitch underline underline-offset-2">Terms of Service</a>{' '}
+                and the{' '}
+                <a href="/refunds" target="_blank" rel="noopener" className="font-medium text-pitch underline underline-offset-2">Refund and Cancellation Policy</a>.
+              </p>
+              <PrivacyNote className="mt-2">Your name, contact details and notes go to the venue owner to host your booking.</PrivacyNote>
               <p className="text-center font-sans text-[11px] text-on-surface-variant mt-4 flex items-center justify-center gap-1.5 font-medium">
                 <Lock size={12} className="text-on-surface-variant" />
-                <span>Secure SSL encrypted connection</span>
+                <span>Encrypted connection (HTTPS)</span>
               </p>
             </div>
 

@@ -7,8 +7,8 @@ interface AuthContextValue {
   user: UserMe | null;
   /** True only during the initial page-load session check (restoreSession) — not while login/signup are in flight, which callers track themselves. */
   isLoading: boolean;
-  login: (email: string, password: string) => Promise<UserMe>;
-  signup: (name: string, email: string, password: string, phone: string) => Promise<UserMe>;
+  login: (email: string, password: string, otp?: string) => Promise<UserMe>;
+  signup: (name: string, email: string, password: string, phone: string, ageConfirmed?: boolean) => Promise<UserMe>;
   logout: () => Promise<void>;
   /** Re-fetches /users/me against the current session — e.g. an owner
    * applicant checking "was I approved yet?" without a full logout/login
@@ -45,8 +45,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
-  const login = useCallback(async (email: string, password: string) => {
-    const { access_token } = await authApi.login(email, password);
+  const login = useCallback(async (email: string, password: string, otp?: string) => {
+    const { access_token } = await authApi.login(email, password, otp);
     setAccessToken(access_token);
     const me = await authApi.me();
     setUser(me);
@@ -54,8 +54,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const signup = useCallback(
-    async (name: string, email: string, password: string, phone: string) => {
-      await authApi.signup(name, email, password, phone);
+    async (name: string, email: string, password: string, phone: string, ageConfirmed = false) => {
+      await authApi.signup(name, email, password, phone, ageConfirmed);
       // signup deliberately doesn't log the user in on its own (the
       // backend keeps the two separate) — logging in immediately after,
       // with the same credentials, makes "sign up" feel like one step

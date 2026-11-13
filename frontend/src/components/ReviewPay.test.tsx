@@ -1,7 +1,12 @@
 import { render, screen, fireEvent } from '@testing-library/react';
 import React from 'react';
 import { describe, expect, it, vi } from 'vitest';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import ReviewPay from './ReviewPay';
+
+const withQuery = (ui: React.ReactElement) => (
+  <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>{ui}</QueryClientProvider>
+);
 import { Venue } from '../types';
 
 const mockVenue: Venue = {
@@ -35,7 +40,7 @@ describe('ReviewPay Adversarial Double-Click and Idempotency Tests', () => {
     });
     const onSubmitBookingMock = vi.fn().mockImplementation(() => bookingPromise);
 
-    render(
+    render(withQuery(
       <ReviewPay
         venue={mockVenue}
         selectedSlot="10:00 - 11:00"
@@ -45,7 +50,7 @@ describe('ReviewPay Adversarial Double-Click and Idempotency Tests', () => {
         onNavigateHome={vi.fn()}
         onSubmitBooking={onSubmitBookingMock}
       />
-    );
+    ));
 
     // Fill guest fields
     fireEvent.change(screen.getByPlaceholderText(/full name/i), {
@@ -54,6 +59,11 @@ describe('ReviewPay Adversarial Double-Click and Idempotency Tests', () => {
     fireEvent.change(screen.getByPlaceholderText(/email address/i), {
       target: { value: 'aarav@example.com' },
     });
+
+    // Guests confirm they are 18 or older (unticked by default).
+    const age = screen.getByLabelText(/I confirm I am 18 years or older/i) as HTMLInputElement;
+    expect(age.checked).toBe(false);
+    fireEvent.click(age);
 
     const submitBtn = screen.getByRole('button', { name: /request booking/i });
     expect(submitBtn).toBeEnabled();

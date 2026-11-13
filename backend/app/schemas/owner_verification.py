@@ -1,7 +1,9 @@
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+
+from app.modules.core.crypto import mask
 
 
 class OwnerVerificationResponse(BaseModel):
@@ -17,6 +19,12 @@ class OwnerVerificationResponse(BaseModel):
     reviewed_at: datetime | None
 
     model_config = {"from_attributes": True}
+
+    # Stored encrypted; only ever returned masked (DPDP Rules r.6(1)(a)).
+    @field_validator("identification_number", "pan", "gstin", mode="after")
+    @classmethod
+    def _mask(cls, v: str | None) -> str | None:
+        return mask(v)
 
 
 class RejectVerificationRequest(BaseModel):

@@ -34,7 +34,7 @@ async def create_review(
 
     # Recalculate avg_rating on venue
     avg_result = await session.execute(
-        select(func.avg(Review.rating)).where(Review.venue_id == venue_id)
+        select(func.avg(Review.rating)).where(Review.venue_id == venue_id, Review.verified.is_(True), Review.hidden_at.is_(None))
     )
     new_avg = avg_result.scalar() or Decimal("0")
     venue.avg_rating = round(Decimal(str(new_avg)), 2)
@@ -85,7 +85,7 @@ async def delete_review(
 
     # Recalculate avg_rating after deletion
     avg_result = await session.execute(
-        select(func.avg(Review.rating)).where(Review.venue_id == venue_id)
+        select(func.avg(Review.rating)).where(Review.venue_id == venue_id, Review.verified.is_(True), Review.hidden_at.is_(None))
     )
     new_avg = avg_result.scalar() or Decimal("0")
     venue_result = await session.execute(select(Venue).where(Venue.id == venue_id))

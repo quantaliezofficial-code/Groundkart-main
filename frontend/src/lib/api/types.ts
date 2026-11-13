@@ -21,6 +21,12 @@ export interface UserMe {
   /** The single platform owner. Display hint only — every protected
    * route checks this again on the server. */
   is_super_admin?: boolean;
+  two_factor_enabled?: boolean;
+  /** Admin must enrol in two-step sign-in before using admin screens. */
+  two_factor_setup_required?: boolean;
+  /** Has confirmed they are 18 or older (accounts created before 10 Nov 2026 may not have). */
+  age_confirmed?: boolean;
+  accepted_terms_version?: string | null;
 }
 
 export interface AccessTokenResponse {
@@ -59,9 +65,17 @@ export interface VenueContentBlock {
   enabled: boolean;
 }
 
+export interface ApiSeller {
+  name: string;
+  business_name: string | null;
+  verified: boolean;
+}
+
 export interface ApiVenue {
   id: string;
   owner_id: string;
+  /** Present on the single-venue endpoint (E-Commerce Rules seller details). */
+  seller?: ApiSeller | null;
   name: string;
   display_name: string | null;
   tagline: string | null;
@@ -161,6 +175,10 @@ export interface BookingCreateRequest {
   rental_mode?: UnitType;
   guest_count?: number;
   customer_notes?: string;
+  /** "I confirm I am 18 years or older" — required for guests. */
+  age_confirmed?: boolean;
+  terms_version?: string;
+  notice_version?: string;
 }
 
 export interface BookingCreateResponse {
@@ -510,6 +528,11 @@ export interface ApiSupportTicket {
   priority: string;
   status: string;
   created_at: string;
+  ack_due_at?: string | null;
+  resolve_due_at?: string | null;
+  acknowledged_at?: string | null;
+  sla_state?: string | null;
+  is_guest?: boolean;
 }
 
 export interface ApiTicketEvent {

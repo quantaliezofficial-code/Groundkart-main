@@ -66,7 +66,7 @@ async def clean_tables(test_engine):
                 async with test_engine.begin() as conn:
                     await conn.execute(
                         text(
-                            "TRUNCATE broker_payout_items, broker_commissions, broker_payouts, broker_profiles, site_banners, ticket_events, support_tickets, "
+                            "TRUNCATE site_content, site_content_revisions, site_assets, consent_records, data_requests, nominees, breach_incidents, broker_payout_items, broker_commissions, broker_payouts, broker_profiles, site_banners, ticket_events, support_tickets, "
                             "help_search_log, help_feedback, help_article_revisions, help_articles, help_categories, guest_enquiries, "
                             "blocks, venue_media, venue_rental_options, venue_purposes, venue_amenities, amenities, audit_logs, "
                             "ledger_entries, refunds, owner_bank_accounts, owner_verifications, refresh_tokens, login_rate_limits, payments, "
@@ -84,7 +84,8 @@ async def clean_tables(test_engine):
                             "cancellation_partial_refund_percent = 50, "
                             "platform_commission_percent = 10, "
                             "default_broker_commission_percent = 2, "
-                            "payout_holdback_days = 0"
+                            "payout_holdback_days = 0, "
+                            "legal_profile = NULL"
                         )
                     )
                 break

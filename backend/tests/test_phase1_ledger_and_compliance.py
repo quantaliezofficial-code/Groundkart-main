@@ -692,8 +692,10 @@ async def test_owner_verification_pan_and_gstin_identity(client, test_session_fa
     )
     assert resp.status_code == 201
     body = resp.json()
-    assert body["pan"] == "ABCDE1234F"
-    assert body["gstin"] == "27ABCDE1234F1Z5"
+    # Since the DPDP compliance work (docs/compliance, checklist 8.3) these
+    # are stored encrypted and only ever returned masked.
+    assert body["pan"] == "••••••234F"
+    assert body["gstin"] == "•••••••••••F1Z5"
 
     admin_token = create_access_token(seeded_admin, "admin")
     admin_list_resp = await client.get(
@@ -703,5 +705,13 @@ async def test_owner_verification_pan_and_gstin_identity(client, test_session_fa
     assert admin_list_resp.status_code == 200
     verifications = admin_list_resp.json()
     submitted = next(v for v in verifications if v["user_id"] == str(customer_id))
-    assert submitted["pan"] == "ABCDE1234F"
-    assert submitted["gstin"] == "27ABCDE1234F1Z5"
+    assert submitted["pan"] == "••••••234F"
+    assert submitted["gstin"] == "•••••••••••F1Z5"
+    # The full values are still available to admins, through an audited call.
+    full = await client.get(
+        f"/api/v1/admin/owner-verifications/{submitted['id']}/numbers",
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+    assert full.status_code == 200
+    assert full.json()["pan"] == "ABCDE1234F"
+    assert full.json()["gstin"] == "27ABCDE1234F1Z5"

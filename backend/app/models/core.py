@@ -30,6 +30,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import ARRAY, CITEXT, JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+from app.modules.core.crypto import EncryptedText
 
 from app.models.base import (
     Base,
@@ -100,6 +101,19 @@ class User(Base):
     created_at: Mapped[datetime] = mapped_column(server_default=text("now()"))
     updated_at: Mapped[datetime] = mapped_column(server_default=text("now()"))
     deleted_at: Mapped[datetime | None]
+    # Compliance additions (alembic j1_compliance_core).
+    # last_active_at drives the voluntary 3-year inactivity erasure (D-08).
+    last_active_at: Mapped[datetime | None]
+    inactivity_warned_at: Mapped[datetime | None]
+    # Seed scripts set this; production refuses to start while any demo
+    # row exists (app/modules/privacy/demo.py).
+    is_demo: Mapped[bool] = mapped_column(default=False, server_default=text("false"))
+    # Admin two-step sign-in (app/modules/auth/totp.py). Secret is stored
+    # encrypted; recovery codes as Argon2 hashes; last step blocks replay.
+    totp_secret_enc: Mapped[str | None] = mapped_column(EncryptedText, nullable=True)
+    totp_enabled_at: Mapped[datetime | None]
+    totp_recovery_hashes: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+    totp_last_used_step: Mapped[int | None]
 
     venues: Mapped[list["Venue"]] = relationship(back_populates="owner", foreign_keys="Venue.owner_id")
     broker_profile: Mapped["BrokerProfile | None"] = relationship(
@@ -112,7 +126,7 @@ class User(Base):
     )
     payouts: Mapped[list["Payout"]] = relationship(back_populates="owner")
     bank_accounts: Mapped[list["OwnerBankAccount"]] = relationship(back_populates="owner")
-    reviews: Mapped[list["Review"]] = relationship(back_populates="user")
+    reviews: Mapped[list["Review"]] = relationship(back_populates="user", foreign_keys="Review.user_id")
     support_tickets: Mapped[list["SupportTicket"]] = relationship(
         back_populates="creator", foreign_keys="SupportTicket.creator_id"
     )
@@ -201,6 +215,7 @@ class Venue(Base):
     referral_code: Mapped[str | None]
     referred_at: Mapped[datetime | None]
     avg_rating: Mapped[Decimal] = mapped_column(Numeric(3, 2), default=0)
+    is_demo: Mapped[bool] = mapped_column(default=False, server_default=text("false"))
     created_at: Mapped[datetime] = mapped_column(server_default=text("now()"))
     updated_at: Mapped[datetime] = mapped_column(server_default=text("now()"))
     deleted_at: Mapped[datetime | None]
@@ -637,9 +652,11 @@ class OwnerVerification(Base):
     document_url: Mapped[str | None] = mapped_column(Text, nullable=True, default="")
     storage_key: Mapped[str | None] = mapped_column(Text, nullable=True)
     identification_type: Mapped[str | None]
-    identification_number: Mapped[str | None]
-    pan: Mapped[str | None] = mapped_column(String(10), nullable=True)
-    gstin: Mapped[str | None] = mapped_column(String(15), nullable=True)
+    identification_number: Mapped[str | None] = mapped_column(EncryptedText, nullable=True)
+    # identification_number, pan and gstin hold AES-GCM ciphertext
+    # ("enc:v1:..."), see app/modules/core/crypto.py.
+    pan: Mapped[str | None] = mapped_column(EncryptedText, nullable=True)
+    gstin: Mapped[str | None] = mapped_column(EncryptedText, nullable=True)
     business_name: Mapped[str | None]
     status: Mapped[str] = mapped_column(OwnerVerificationStatus, default="pending")
     rejection_reason: Mapped[str | None]
@@ -980,10 +997,20 @@ class Review(Base):
     booking_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("bookings.id", ondelete="SET NULL"))
     rating: Mapped[int]
     content: Mapped[str]
+    # True only when the review is tied to the author's own completed
+    # booking at this venue. Public listings show verified reviews only.
+    verified: Mapped[bool] = mapped_column(default=False, server_default=text("false"))
+    is_demo: Mapped[bool] = mapped_column(default=False, server_default=text("false"))
+    # Super admin moderation. The text and rating a customer wrote are never
+    # edited; a review can only be hidden (with a reason) or featured.
+    hidden_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    hidden_reason: Mapped[str | None] = mapped_column(nullable=True)
+    hidden_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    featured: Mapped[bool] = mapped_column(default=False, server_default=text("false"))
     created_at: Mapped[datetime] = mapped_column(server_default=text("now()"))
 
     venue: Mapped["Venue"] = relationship(back_populates="reviews")
-    user: Mapped["User"] = relationship(back_populates="reviews")
+    user: Mapped["User"] = relationship(back_populates="reviews", foreign_keys=[user_id])
     booking: Mapped["Booking"] = relationship(back_populates="review")
 
 
@@ -1036,6 +1063,10 @@ class SystemConfiguration(Base):
     payout_holdback_days: Mapped[int] = mapped_column(default=3)
     # Rate pre-filled when an admin adds a broker. Only the super admin can
     # change an individual broker's rate afterwards.
+    # Business facts the owner supplies once (legal name, Grievance Officer,
+    # jurisdiction...). Keys: app/modules/privacy/legal_profile.py. Unset
+    # keys render as [[OWNER TO FILL: ...]] placeholders, never invented.
+    legal_profile: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     default_broker_commission_percent: Mapped[Decimal] = mapped_column(
         Numeric(5, 2), default=Decimal("2.00"), server_default="2"
     )
@@ -1166,9 +1197,22 @@ class SupportTicket(Base):
     status: Mapped[str] = mapped_column(TicketStatus, default="open")
     category: Mapped[str] = mapped_column(TicketCategory, default="general")
     priority: Mapped[str] = mapped_column(TicketPriority, default="medium")
-    creator_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("users.id", ondelete="SET NULL")
+    # Nullable since j1_compliance_core: guest Contact-form tickets have no
+    # account; their contact details stay in guest_enquiries.
+    creator_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
+    guest_enquiry_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("guest_enquiries.id", ondelete="SET NULL"), nullable=True
+    )
+    # Human-facing reference, e.g. GK-T-2611-0042 (shown on the Contact form).
+    ticket_number: Mapped[str | None] = mapped_column(unique=True, nullable=True)
+    # Grievance clocks (app/modules/support/sla.py): content complaints
+    # 24 h / 15 days (Intermediary Rules), others 48 h / 30 days
+    # (E-Commerce Rules r.4(5)), never more than 90 days (DPDP Rules r.14).
+    ack_due_at: Mapped[datetime | None]
+    resolve_due_at: Mapped[datetime | None]
+    acknowledged_at: Mapped[datetime | None]
     assignee_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL")
     )
@@ -1234,7 +1278,7 @@ class TicketEvent(Base):
     actor: Mapped["User | None"] = relationship()
 
 
-from app.modules.core.logging import request_id_ctx
+from app.modules.core.logging import request_id_ctx  # noqa: E402
 
 @event.listens_for(BookingEvent, "before_insert")
 def receive_before_insert_booking_event(mapper, connection, target):
@@ -1365,7 +1409,7 @@ class OwnerBankAccount(Base):
     )
     owner_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
     account_holder_name: Mapped[str] = mapped_column(String(255))
-    account_number: Mapped[str] = mapped_column(String(64))
+    account_number: Mapped[str] = mapped_column(EncryptedText)  # see core/crypto.py
     ifsc_code: Mapped[str] = mapped_column(String(16))
     bank_name: Mapped[str | None] = mapped_column(String(128))
     upi_id: Mapped[str | None] = mapped_column(String(128))
@@ -1641,7 +1685,7 @@ class BrokerProfile(Base):
     company_name: Mapped[str | None]
     city: Mapped[str | None]
     payout_method: Mapped[str | None]
-    payout_details: Mapped[str | None]
+    payout_details: Mapped[str | None] = mapped_column(EncryptedText, nullable=True)
     notes: Mapped[str | None]
     created_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
     created_at: Mapped[datetime] = mapped_column(server_default=text("now()"))
@@ -1790,3 +1834,153 @@ class SiteBanner(Base):
     created_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
     created_at: Mapped[datetime] = mapped_column(server_default=text("now()"))
     updated_at: Mapped[datetime] = mapped_column(server_default=text("now()"))
+
+
+class ConsentRecord(Base):
+    """Proof of what a person agreed to, which version, and when (DPDP
+    s.6(10) puts the burden of proof on the Data Fiduciary). Append-only:
+    a withdrawal is a new row with action='withdrawn'. ip_hash is a keyed
+    HMAC of the client IP, never the IP itself."""
+
+    __tablename__ = "consent_records"
+    __table_args__ = (
+        Index("idx_consent_records_user", "user_id", "created_at"),
+        Index("idx_consent_records_booking", "booking_id"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    user_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    booking_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("bookings.id", ondelete="SET NULL"), nullable=True)
+    purpose: Mapped[str]  # terms | privacy_notice | age_18_plus | external_media
+    action: Mapped[str] = mapped_column(default="given", server_default="given")  # given | withdrawn
+    notice_version: Mapped[str | None]
+    terms_version: Mapped[str | None]
+    source: Mapped[str | None]  # signup | guest_checkout | checkout | my_data | admin
+    ip_hash: Mapped[str | None]
+    created_at: Mapped[datetime] = mapped_column(server_default=text("now()"))
+
+
+class DataRequest(Base):
+    """A Data Principal rights request (DPDP s.11-14): summary, correction,
+    erasure, withdrawal, nominee. Every request has a number and a due
+    date (30 days, inside the 90-day ceiling of DPDP Rules r.14(3)), and
+    opens a linked support ticket so it shows up in the admin SLA views."""
+
+    __tablename__ = "data_requests"
+    __table_args__ = (Index("idx_data_requests_status_due", "status", "due_at"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    request_number: Mapped[str] = mapped_column(unique=True)
+    user_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    booking_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("bookings.id", ondelete="SET NULL"), nullable=True)
+    type: Mapped[str]  # summary | correction | erasure | withdraw_consent | nominee | other
+    status: Mapped[str] = mapped_column(default="open", server_default="open")  # open | completed | rejected
+    details: Mapped[str | None]
+    result: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    ticket_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("support_tickets.id", ondelete="SET NULL"), nullable=True)
+    due_at: Mapped[datetime]
+    completed_at: Mapped[datetime | None]
+    created_at: Mapped[datetime] = mapped_column(server_default=text("now()"))
+    updated_at: Mapped[datetime] = mapped_column(server_default=text("now()"))
+
+
+class Nominee(Base):
+    """DPDP s.14: a person the user names to exercise their rights after
+    death or incapacity. One per user."""
+
+    __tablename__ = "nominees"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), unique=True)
+    name: Mapped[str]
+    relationship_to_user: Mapped[str | None] = mapped_column("relationship")
+    email: Mapped[str | None]
+    phone: Mapped[str | None]
+    created_at: Mapped[datetime] = mapped_column(server_default=text("now()"))
+    updated_at: Mapped[datetime] = mapped_column(server_default=text("now()"))
+
+
+class BreachIncident(Base):
+    """Incident register (docs/compliance/drafts/breach-response-plan.md).
+    Deadlines are computed from detected_at when the row is created:
+    CERT-In 6 hours (Directions 2022), Board detailed report 72 hours (DPDP
+    Rules r.7(2)(b)). Never deleted."""
+
+    __tablename__ = "breach_incidents"
+    __table_args__ = (Index("idx_breach_incidents_status", "status", "detected_at"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    reference: Mapped[str] = mapped_column(unique=True)
+    title: Mapped[str]
+    description: Mapped[str]
+    detected_at: Mapped[datetime]
+    occurred_at: Mapped[datetime | None]
+    data_categories: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+    affected_count: Mapped[int | None]
+    is_cyber_incident: Mapped[bool] = mapped_column(default=True, server_default=text("true"))
+    is_personal_data_breach: Mapped[bool] = mapped_column(default=True, server_default=text("true"))
+    status: Mapped[str] = mapped_column(default="open", server_default="open")  # open | contained | closed
+    cert_in_due_at: Mapped[datetime]
+    board_report_due_at: Mapped[datetime]
+    cert_in_reported_at: Mapped[datetime | None]
+    board_initial_reported_at: Mapped[datetime | None]
+    board_report_submitted_at: Mapped[datetime | None]
+    users_notified_at: Mapped[datetime | None]
+    containment_notes: Mapped[str | None]
+    remediation_notes: Mapped[str | None]
+    created_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    closed_at: Mapped[datetime | None]
+    created_at: Mapped[datetime] = mapped_column(server_default=text("now()"))
+    updated_at: Mapped[datetime] = mapped_column(server_default=text("now()"))
+
+
+class SiteContent(Base):
+    """Published website copy, as partial overrides of the defaults in
+    frontend/src/lib/homepageContent.ts. Super admin only."""
+
+    __tablename__ = "site_content"
+
+    key: Mapped[str] = mapped_column(primary_key=True)
+    data: Mapped[dict] = mapped_column(JSONB, default=dict, server_default=text("'{}'::jsonb"))
+    version: Mapped[int] = mapped_column(default=0, server_default=text("0"))
+    updated_at: Mapped[datetime] = mapped_column(server_default=text("now()"))
+    updated_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+
+
+class SiteContentRevision(Base):
+    __tablename__ = "site_content_revisions"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
+    key: Mapped[str]
+    version: Mapped[int]
+    data: Mapped[dict] = mapped_column(JSONB)
+    note: Mapped[str | None] = mapped_column(nullable=True)
+    created_at: Mapped[datetime] = mapped_column(server_default=text("now()"))
+    created_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+
+
+class SiteAsset(Base):
+    """An image the super admin uploaded for the website (hero, occasion
+    cards, sections). Stored as optimised WebP through the file storage."""
+
+    __tablename__ = "site_assets"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
+    url: Mapped[str] = mapped_column(unique=True)
+    storage_key: Mapped[str]
+    label: Mapped[str]
+    alt_text: Mapped[str] = mapped_column(default="", server_default=text("''"))
+    width: Mapped[int | None] = mapped_column(nullable=True)
+    height: Mapped[int | None] = mapped_column(nullable=True)
+    size_bytes: Mapped[int]
+    created_at: Mapped[datetime] = mapped_column(server_default=text("now()"))
+    created_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+

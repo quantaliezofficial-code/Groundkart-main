@@ -12,7 +12,7 @@ from fastapi import Body, Depends, FastAPI, File, Form, HTTPException, Query, Re
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from sqlalchemy import delete, func, select, text
+from sqlalchemy import delete, func, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -50,6 +50,7 @@ from app.modules.ledger import service as ledger_service
 from app.modules.storage.base import UnsupportedFileError
 
 from app.modules.admin import passwords_service as admin_passwords_service
+from app.modules.privacy import consent as consent_service
 from app.schemas.admin import (
     AdminPasswordResetRequest,
     AdminPasswordResetResponse,
@@ -203,6 +204,35 @@ async def _rate_limit_cleanup_loop():
             logger.exception("rate limit cleanup pass failed — will retry next interval")
         await asyncio.sleep(1800)
 
+RETENTION_LOCK_KEY = 74_210_301  # arbitrary, unique to the retention job
+
+
+async def _retention_loop():
+    """Daily retention pass (app/modules/privacy/retention.py)."""
+    from app.modules.privacy.retention import run_retention
+
+    await asyncio.sleep(120)  # let the app settle after start-up
+    while True:
+        try:
+            # With several API workers, only the one holding this Postgres
+            # advisory lock runs the pass; the others skip it.
+            async with SessionLocal() as lock_session:
+                got = (
+                    await lock_session.execute(text("SELECT pg_try_advisory_lock(:k)"), {"k": RETENTION_LOCK_KEY})
+                ).scalar()
+                if got:
+                    try:
+                        await run_retention(SessionLocal)
+                    finally:
+                        await lock_session.execute(text("SELECT pg_advisory_unlock(:k)"), {"k": RETENTION_LOCK_KEY})
+                        await lock_session.commit()
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception("retention pass failed — will retry next interval")
+        await asyncio.sleep(max(1, settings.retention_interval_hours) * 3600)
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     import os
@@ -211,6 +241,7 @@ async def lifespan(_app: FastAPI):
     sweep_task = None
     outbox_task = None
     cleanup_task = None
+    retention_task = None
     
     if not is_test:
         # Pre-flight startup database & migration check
@@ -234,9 +265,18 @@ async def lifespan(_app: FastAPI):
                 "CRITICAL DATABASE CONNECTION ERROR: Failed to connect to DATABASE_URL: %s", exc
             )
 
+        # Never serve demo data (sample venues, reviews) in production.
+        from app.modules.privacy.demo import (
+            assert_no_demo_data_in_production,
+            assert_no_known_dev_passwords_in_production,
+        )
+        await assert_no_demo_data_in_production(SessionLocal, settings.environment)
+        await assert_no_known_dev_passwords_in_production(SessionLocal, settings.environment)
+
         sweep_task = asyncio.create_task(_hold_sweep_loop())
         outbox_task = asyncio.create_task(_outbox_sweep_loop())
         cleanup_task = asyncio.create_task(_rate_limit_cleanup_loop())
+        retention_task = asyncio.create_task(_retention_loop()) if settings.retention_job_enabled else None
         
     try:
         yield
@@ -255,15 +295,31 @@ async def lifespan(_app: FastAPI):
             except asyncio.CancelledError:
                 pass
 
-        if cleanup_task:
-            cleanup_task.cancel()
-            try:
-                await cleanup_task
-            except asyncio.CancelledError:
-                pass
+        for task in (cleanup_task, retention_task):
+            if task:
+                task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
 
 
-app = FastAPI(title="GroundKart API", version="0.1.0", lifespan=lifespan)
+# Interactive API docs and the OpenAPI schema describe every endpoint,
+# including admin ones: useful in development, needless exposure in
+# production. Set EXPOSE_API_DOCS=true to turn them on deliberately.
+_SHOW_API_DOCS = (
+    settings.expose_api_docs
+    if settings.expose_api_docs is not None
+    else settings.environment.lower() not in ("prod", "production")
+)
+app = FastAPI(
+    title="GroundKart API",
+    version="0.1.0",
+    lifespan=lifespan,
+    docs_url="/docs" if _SHOW_API_DOCS else None,
+    redoc_url="/redoc" if _SHOW_API_DOCS else None,
+    openapi_url="/openapi.json" if _SHOW_API_DOCS else None,
+)
 
 from app.modules.core.logging import setup_logging
 setup_logging()
@@ -341,6 +397,9 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    # Lets the SPA read the file name of exports (My Data JSON, CSV records)
+    # when the API is on a different origin (local dev, split deployments).
+    expose_headers=["Content-Disposition"],
 )
 
 # A real, necessary fix found while wiring the owner dashboard's image
@@ -440,6 +499,9 @@ Allow: /api/v1/use-cases
 # Disallow private administrative, owner, transactional, and authentication endpoints
 Disallow: /admin
 Disallow: /owner
+Disallow: /broker
+Disallow: /account
+Disallow: /bookings/manage/
 Disallow: /checkout
 Disallow: /my-bookings
 Disallow: /support
@@ -532,18 +594,20 @@ async def dynamic_sitemap_xml_route(db: AsyncSession = Depends(get_db)) -> Respo
         '    <changefreq>monthly</changefreq>',
         '    <priority>0.5</priority>',
         '  </url>',
-        '  <url>',
-        f'    <loc>{base_url}/terms</loc>',
-        '    <lastmod>2026-10-15</lastmod>',
-        '    <changefreq>monthly</changefreq>',
-        '    <priority>0.3</priority>',
-        '  </url>',
-        '  <url>',
-        f'    <loc>{base_url}/privacy</loc>',
-        '    <lastmod>2026-10-15</lastmod>',
-        '    <changefreq>monthly</changefreq>',
-        '    <priority>0.3</priority>',
-        '  </url>',
+    ]
+    # Legal pages (frontend/src/lib/legal.ts LEGAL_DOCS), dated by the notice version.
+    from app.modules.privacy.versions import NOTICE_DATE
+
+    for legal_path in ("/privacy", "/terms", "/refunds", "/cookies", "/grievance", "/your-data"):
+        xml_lines.extend([
+            '  <url>',
+            f'    <loc>{base_url}{legal_path}</loc>',
+            f'    <lastmod>{NOTICE_DATE}</lastmod>',
+            '    <changefreq>monthly</changefreq>',
+            '    <priority>0.3</priority>',
+            '  </url>',
+        ])
+    xml_lines += [
         '  <!-- Active Published Venues from Database -->',
     ]
 
@@ -571,7 +635,20 @@ async def signup_route(body: SignupRequest, request: Request, db: AsyncSession =
     clean_phone = re.sub(r"[^\d+]", "", body.phone.strip())
     await auth_service.check_rate_limit(db, f"ratelimit:signup:{clean_phone}", max_attempts=10, window_seconds=60)
     await auth_service.check_rate_limit(db, f"ratelimit:signup:ip:{ip}", max_attempts=20, window_seconds=60)
+    if not body.age_confirmed:
+        raise HTTPException(status_code=422, detail=consent_service.AGE_REQUIRED_MESSAGE)
     user = await auth_service.signup(db, body.name, body.phone, body.password, body.email)
+    async with db.begin():
+        consent_service.add_records(
+            db,
+            purposes=consent_service.SERVICE_PURPOSES,
+            source="signup",
+            request=request,
+            user_id=user.id,
+            terms_version=body.terms_version,
+            notice_version=body.notice_version,
+        )
+        await db.execute(update(User).where(User.id == user.id).values(last_active_at=datetime.now(timezone.utc)))
     return {"id": str(user.id), "phone": user.phone}
 
 
@@ -605,7 +682,7 @@ async def login_route(
     clean_login = body.login_id.strip().lower()
     await auth_service.check_rate_limit(db, f"ratelimit:login:{clean_login}", max_attempts=10, window_seconds=60)
     await auth_service.check_rate_limit(db, f"ratelimit:login:ip:{ip}", max_attempts=30, window_seconds=60)
-    _, access_token, raw_refresh = await auth_service.login(db, body.login_id, body.password)
+    _, access_token, raw_refresh = await auth_service.login(db, body.login_id, body.password, otp=body.otp)
     _set_refresh_cookie(response, raw_refresh)
     return AccessTokenResponse(access_token=access_token)
 
@@ -624,7 +701,10 @@ async def refresh_route(
 
     new_raw_refresh, user = await auth_service.rotate_refresh_token(db, raw_token)
     _set_refresh_cookie(response, new_raw_refresh)
-    return AccessTokenResponse(access_token=create_access_token(user.id, user.role))
+    # A refresh chain can only exist for an admin with 2FA enabled if they
+    # proved it at sign-in or while enrolling, so it keeps the "otp" method.
+    amr = ["pwd", "otp"] if user.totp_enabled_at is not None else ["pwd"]
+    return AccessTokenResponse(access_token=create_access_token(user.id, user.role, amr=amr))
 
 
 @app.post("/api/v1/auth/logout", status_code=204)
@@ -653,6 +733,8 @@ async def create_booking_route(
     guest checkout — booking-as-guest must never require login per
     01_PRD.md A 5, so an invalid token degrades to anonymous rather than
     401ing a route that's supposed to be open to guests."""
+    if current_user is None and not body.age_confirmed:
+        raise HTTPException(status_code=422, detail=consent_service.AGE_REQUIRED_MESSAGE)
     idem_key = request.headers.get("Idempotency-Key")
     if getattr(settings, "idempotency_required", False) and not idem_key:
         raise HTTPException(status_code=400, detail="Idempotency-Key header is required for this operation")
@@ -687,6 +769,20 @@ async def create_booking_route(
 
         from app.modules.core.config_service import get_system_config
         config = await get_system_config(db)
+
+        # Record what the booker agreed to (Terms, Privacy Notice, 18+).
+        if current_user is None or body.age_confirmed:
+            consent_service.add_records(
+                db,
+                purposes=consent_service.SERVICE_PURPOSES,
+                source="guest_checkout" if current_user is None else "checkout",
+                request=request,
+                user_id=current_user.id if current_user else None,
+                booking_id=booking.id,
+                terms_version=body.terms_version,
+                notice_version=body.notice_version,
+            )
+            await db.commit()
 
         resp = BookingCreateResponse(
             booking_id=booking.id,
@@ -1059,7 +1155,7 @@ async def sweep_expired_holds_route(
 
 
 @app.get("/api/v1/users/me", response_model=UserMeResponse)
-async def get_me_route(user=Depends(get_current_user_row)) -> UserMeResponse:
+async def get_me_route(user=Depends(get_current_user_row), db: AsyncSession = Depends(get_db)) -> UserMeResponse:
     """07_design.md §3.1: 'Returns current user profile + role +
     verification status.' The frontend's owner-onboarding screens need this
     to know which of the pending/verified/rejected states to show."""
@@ -1072,7 +1168,29 @@ async def get_me_route(user=Depends(get_current_user_row)) -> UserMeResponse:
         is_verified=user.is_verified,
         must_change_password=user.must_change_password,
         is_super_admin=bool(user.is_super_admin) and user.role == "admin",
+        two_factor_enabled=user.totp_enabled_at is not None,
+        two_factor_setup_required=(
+            user.role == "admin" and user.totp_enabled_at is None and settings.resolve_admin_2fa_required()
+        ),
+        **(await _age_status(db, user.id)),
     )
+
+
+async def _age_status(db: AsyncSession, user_id: uuid.UUID) -> dict:
+    from app.models.core import ConsentRecord
+
+    if True:
+        row = (
+            await db.execute(
+                select(ConsentRecord)
+                .where(ConsentRecord.user_id == user_id, ConsentRecord.purpose.in_(["age_18_plus", "terms"]), ConsentRecord.action == "given")
+                .order_by(ConsentRecord.created_at.desc())
+            )
+        ).scalars().all()
+    return {
+        "age_confirmed": any(r.purpose == "age_18_plus" for r in row),
+        "accepted_terms_version": next((r.terms_version for r in row if r.purpose == "terms"), None),
+    }
 
 
 @app.get("/api/v1/notifications", response_model=list[NotificationResponse])
@@ -1152,6 +1270,11 @@ async def submit_owner_verification_route(
     what turns a customer account into a pending owner application.
     Approval (admin-only, below) is the only thing that actually changes
     the role."""
+    id_type = (identification_type or "").strip().lower()
+    id_number = (identification_number or "").replace(" ", "").strip() or None
+    if id_type in ("aadhaar", "aadhar") and id_number and not (id_number.isdigit() and len(id_number) == 4):
+        # D-14 / Q-16: never store a full Aadhaar number.
+        raise HTTPException(status_code=422, detail="For Aadhaar, enter only the last 4 digits and upload a masked copy.")
     content = await document.read()
     try:
         _, storage_key = await storage.save(
@@ -1167,9 +1290,10 @@ async def submit_owner_verification_route(
         storage_key=storage_key,
         business_name=business_name,
         identification_type=identification_type,
-        identification_number=identification_number,
-        pan=pan,
-        gstin=gstin,
+        # Encrypted on write by the EncryptedText column type.
+        identification_number=id_number,
+        pan=(pan or "").strip().upper() or None,
+        gstin=(gstin or "").strip().upper() or None,
     )
     return OwnerVerificationResponse.model_validate(verification)
 
@@ -1433,7 +1557,30 @@ async def get_venue_route(
     previewable by its owner/an admin otherwise — see
     catalog.service.get_venue's visibility rule."""
     venue = await catalog_service.get_venue(db, venue_id, current_user)
-    return VenueResponse.from_venue(venue)
+    resp = VenueResponse.from_venue(venue)
+    resp.seller = await _seller_view(db, venue.owner_id)
+    return resp
+
+
+async def _seller_view(db: AsyncSession, owner_id: uuid.UUID):
+    from app.schemas.catalog import SellerView
+
+    owner = (await db.execute(select(User).where(User.id == owner_id))).scalar_one_or_none()
+    if owner is None:
+        return None
+    verification = (
+        await db.execute(
+            select(OwnerVerification)
+            .where(OwnerVerification.user_id == owner_id, OwnerVerification.status == "approved")
+            .order_by(OwnerVerification.created_at.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    return SellerView(
+        name=public_reviewer_name(owner) if owner.deleted_at else owner.name,
+        business_name=verification.business_name if verification else None,
+        verified=bool(owner.is_verified),
+    )
 
 
 @app.patch("/api/v1/venues/{venue_id}", response_model=VenueResponse)
@@ -1918,7 +2065,7 @@ async def create_owner_bank_account_route(
     bank_account = OwnerBankAccount(
         owner_id=current_user.id,
         account_holder_name=body.account_holder_name.strip(),
-        account_number=body.account_number.strip(),
+        account_number=body.account_number.strip(),  # EncryptedText column
         ifsc_code=body.ifsc_code.strip().upper(),
         bank_name=body.bank_name.strip() if body.bank_name else None,
         upi_id=body.upi_id.strip() if body.upi_id else None,
@@ -2287,6 +2434,13 @@ async def get_admin_health_route(
 # Admin Database Studio & Analytics
 # ---------------------------------------------------------------------------
 
+async def _audit_studio(db: AsyncSession, current_user: CurrentUser, action: str, extra: dict) -> None:
+    """Every look at raw tables is personal-data access: record who and what
+    (DPDP Rules r.6 access logs). Committed before the read runs."""
+    db.add(AuditLog(actor_id=current_user.id, action=action, entity_type="database", extra_data=extra))
+    await db.commit()
+
+
 @app.get("/api/v1/admin/db/stats", response_model=DatabaseStatsResponse)
 async def get_admin_db_stats_route(
     db: AsyncSession = Depends(get_db),
@@ -2307,6 +2461,7 @@ async def get_admin_table_data_route(
     db: AsyncSession = Depends(get_db),
     current_user: CurrentUser = Depends(require_role("admin")),
 ) -> TableDataResponse:
+    await _audit_studio(db, current_user, "db.table_viewed", {"table": table_name, "search": bool(search), "offset": offset})
     data = await admin_db_service.get_table_data(
         db,
         table_name=table_name,
@@ -2325,6 +2480,13 @@ async def execute_admin_safe_query_route(
     db: AsyncSession = Depends(get_db),
     current_user: CurrentUser = Depends(require_role("admin")),
 ) -> SafeQueryResponse:
+    enabled = settings.admin_sql_console if settings.admin_sql_console is not None else settings.environment.lower() not in ("prod", "production")
+    if not enabled:
+        raise HTTPException(
+            status_code=403,
+            detail="The SQL console is turned off on this server. Use the table browser, or set ADMIN_SQL_CONSOLE=true for a supervised session.",
+        )
+    await _audit_studio(db, current_user, "db.query_run", {"sql": body.sql[:2000]})
     res = await admin_db_service.execute_safe_query(db, body.sql)
     return SafeQueryResponse(**res)
 
@@ -2346,6 +2508,7 @@ async def export_admin_table_csv_route(
     db: AsyncSession = Depends(get_db),
     current_user: CurrentUser = Depends(require_role("admin")),
 ):
+    await _audit_studio(db, current_user, "db.table_exported", {"table": table_name, "limit": limit})
     csv_data = await admin_db_service.export_table_csv(db, table_name, limit=limit)
     return Response(
         content=csv_data,
@@ -2361,6 +2524,49 @@ async def export_admin_table_csv_route(
 # Reviews — POST (create, any auth'd user), GET (public), DELETE (admin only)
 # ---------------------------------------------------------------------------
 
+@app.get("/api/v1/reviews/recent")
+async def recent_verified_reviews_route(limit: int = 6, db: AsyncSession = Depends(get_db)) -> list[dict]:
+    """Latest verified-booking reviews for the homepage. Only reviews tied to
+    the reviewer's own completed booking are ever returned."""
+    limit = max(1, min(limit, 12))
+    rows = (
+        await db.execute(
+            select(Review, Venue.name, Venue.slug, Venue.city)
+            .join(Venue, Venue.id == Review.venue_id)
+            .where(Review.verified.is_(True), Review.hidden_at.is_(None), Venue.deleted_at.is_(None), Venue.status == "active", func.length(Review.content) >= 20)
+            .options(selectinload(Review.user))
+            .order_by(Review.featured.desc(), Review.created_at.desc())
+            .limit(limit)
+        )
+    ).all()
+    return [
+        {
+            "id": str(r.id),
+            "featured": bool(r.featured),
+            "venue_name": name,
+            "venue_slug": slug,
+            "venue_city": city,
+            "user_name": public_reviewer_name(r.user),
+            "rating": r.rating,
+            "content": r.content,
+            "created_at": r.created_at.isoformat() if r.created_at else None,
+            "verified_booking": True,
+        }
+        for r, name, slug, city in rows
+    ]
+
+
+def public_reviewer_name(user) -> str:
+    """'Kavya Nair' -> 'Kavya N.'; erased accounts -> 'Former customer'.
+    Data minimisation: the full name is never published."""
+    if user is None or user.deleted_at is not None:
+        return "Former customer"
+    parts = (user.name or "").split()
+    if not parts:
+        return "Customer"
+    return parts[0] if len(parts) == 1 else f"{parts[0]} {parts[-1][0].upper()}."
+
+
 @app.post("/api/v1/venues/{venue_id}/reviews", response_model=ReviewResponse, status_code=201)
 async def create_review_route(
     venue_id: uuid.UUID,
@@ -2368,27 +2574,29 @@ async def create_review_route(
     db: AsyncSession = Depends(get_db),
     current_user: CurrentUser = Depends(get_current_user),
 ) -> ReviewResponse:
-    """Any authenticated user (customer, owner, or admin) may leave a review.
-    avg_rating on the venue is recalculated via AVG after insert so it stays
-    in sync without a DB trigger."""
-    # Verify venue exists and is active (anyone browsing can only see active venues)
+    """Verified reviews only (CCPA dark-patterns / E-Commerce r.4(3)): the
+    reviewer must be the customer on a completed booking at this venue, and
+    each booking can be reviewed once. avg_rating counts verified reviews."""
     venue_result = await db.execute(select(Venue).where(Venue.id == venue_id, Venue.deleted_at.is_(None)))
     venue = venue_result.scalar_one_or_none()
     if venue is None:
         raise HTTPException(status_code=404, detail="Venue not found.")
 
-    if body.booking_id:
-        from app.models.core import Booking
-        booking_res = await db.execute(select(Booking).where(Booking.id == body.booking_id))
-        booking = booking_res.scalar_one_or_none()
-        if not booking:
-            raise HTTPException(status_code=404, detail="Booking not found.")
-        if booking.status != "completed":
-            raise HTTPException(status_code=400, detail="Only completed bookings can be reviewed")
-        
-        existing_review = await db.execute(select(Review).where(Review.booking_id == body.booking_id))
-        if existing_review.scalar_one_or_none():
-            raise HTTPException(status_code=400, detail="Booking already reviewed.")
+    if not body.booking_id:
+        raise HTTPException(status_code=400, detail="Reviews can only be left for a completed booking.")
+    from app.models.core import Booking
+    booking = (await db.execute(select(Booking).where(Booking.id == body.booking_id))).scalar_one_or_none()
+    if not booking:
+        raise HTTPException(status_code=404, detail="Booking not found.")
+    if booking.customer_id != current_user.id:
+        raise HTTPException(status_code=403, detail="You can only review your own bookings.")
+    if booking.venue_id != venue_id:
+        raise HTTPException(status_code=400, detail="This booking is for a different venue.")
+    if booking.status != "completed":
+        raise HTTPException(status_code=400, detail="Only completed bookings can be reviewed")
+    existing_review = await db.execute(select(Review).where(Review.booking_id == body.booking_id))
+    if existing_review.scalar_one_or_none():
+        raise HTTPException(status_code=400, detail="Booking already reviewed.")
 
     review = Review(
         venue_id=venue_id,
@@ -2396,13 +2604,14 @@ async def create_review_route(
         booking_id=body.booking_id,
         rating=body.rating,
         content=body.content,
+        verified=True,
     )
     db.add(review)
     await db.flush()  # get review.id before the avg query
 
-    # Recalculate avg_rating on venue
+    # Recalculate avg_rating on venue (verified reviews only)
     avg_result = await db.execute(
-        select(func.avg(Review.rating)).where(Review.venue_id == venue_id)
+        select(func.avg(Review.rating)).where(Review.venue_id == venue_id, Review.verified.is_(True), Review.hidden_at.is_(None))
     )
     new_avg = avg_result.scalar() or Decimal("0")
     venue.avg_rating = round(Decimal(str(new_avg)), 2)
@@ -2420,10 +2629,11 @@ async def create_review_route(
         venue_id=review.venue_id,
         user_id=review.user_id,
         booking_id=review.booking_id,
-        user_name=review.user.name,
+        user_name=public_reviewer_name(review.user),
         rating=review.rating,
         content=review.content,
         created_at=review.created_at,
+        verified_booking=review.verified,
     )
 
 
@@ -2445,9 +2655,11 @@ async def list_reviews_route(
             raise HTTPException(status_code=404, detail="Venue not found")
         actual_id = resolved
 
+    # Public pages show verified-booking reviews only; unverified legacy
+    # reviews stay visible to admins for moderation (D-20).
     result = await db.execute(
         select(Review)
-        .where(Review.venue_id == actual_id)
+        .where(Review.venue_id == actual_id, Review.verified.is_(True), Review.hidden_at.is_(None))
         .options(selectinload(Review.user))
         .order_by(Review.created_at.desc())
         .limit(limit)
@@ -2460,10 +2672,11 @@ async def list_reviews_route(
             venue_id=r.venue_id,
             booking_id=r.booking_id,
             user_id=r.user_id,
-            user_name=r.user.name,
+            user_name=public_reviewer_name(r.user),
             rating=r.rating,
             content=r.content,
             created_at=r.created_at,
+            verified_booking=r.verified,
         )
         for r in reviews
     ]
@@ -2489,7 +2702,7 @@ async def admin_delete_review_route(
 
     # Recalculate avg_rating after deletion
     avg_result = await db.execute(
-        select(func.avg(Review.rating)).where(Review.venue_id == venue_id)
+        select(func.avg(Review.rating)).where(Review.venue_id == venue_id, Review.verified.is_(True), Review.hidden_at.is_(None))
     )
     new_avg = avg_result.scalar() or Decimal("0")
     venue_result = await db.execute(select(Venue).where(Venue.id == venue_id))
@@ -2700,8 +2913,10 @@ async def delete_me_route(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user_row),
 ):
-    """Self-service account closure. Soft delete: the row stays so bookings,
-    payments and audit entries keep pointing at a real record."""
+    """Self-service account closure. Since the compliance work this erases
+    personal data (DPDP s.12) through the same service as My Data → Delete
+    my data; the row stays, anonymised, so bookings, payments and audit
+    entries keep pointing at a real record."""
     if current_user.is_super_admin:
         # Deleting the only owner account would leave the platform with
         # nobody able to manage admins or commission terms.
@@ -2709,24 +2924,14 @@ async def delete_me_route(
             status_code=409,
             detail="The super admin account can't be deleted. Transfer the role first.",
         )
-    from sqlalchemy import update
-    from app.models.core import RefreshToken
+    from app.modules.privacy.erasure import erase_user
+    from app.modules.privacy import rights
 
-    now = datetime.now(timezone.utc)
-    current_user.deleted_at = now
-    await db.execute(
-        update(Venue).where(Venue.owner_id == current_user.id).values(status="archived")
-    )
-    # End every session for the closed account, not just this one.
-    await db.execute(
-        update(RefreshToken)
-        .where(RefreshToken.user_id == current_user.id, RefreshToken.revoked_at.is_(None))
-        .values(revoked_at=now)
-    )
-    db.add(
-        AuditLog(actor_id=current_user.id, action="user.deleted_self", entity_type="user", entity_id=current_user.id)
-    )
-    await db.commit()
+    user_id = current_user.id
+    await db.rollback()
+    async with db.begin():
+        result = await erase_user(db, user_id, reason="self_service_delete")
+        await rights.record_completed_request(db, user_id, "erasure", result)
     return Response(status_code=204)
 
 @app.delete("/api/v1/venues/{venue_id}/images/{image_id}", status_code=204)
@@ -2750,6 +2955,12 @@ async def delete_image_route(
 from app.routers.platform import router as platform_router
 
 app.include_router(platform_router)
+
+# India data-protection and consumer-law compliance: legal profile, consent,
+# rights (My Data), admin 2FA, incidents, compliance dashboard.
+from app.routers.compliance import router as compliance_router
+
+app.include_router(compliance_router)
 
 
 @app.exception_handler(Exception)
@@ -3191,23 +3402,33 @@ async def submit_help_feedback_route(
 @app.post("/api/v1/contact", response_model=ContactSubmitResponse)
 async def submit_contact_form_route(
     req: ContactSubmitRequest,
+    request: Request,
     current_user: CurrentUser | None = Depends(get_current_user_optional),
     db: AsyncSession = Depends(get_db),
 ) -> ContactSubmitResponse:
-    """Public — submit contact form. If logged in, creates support ticket; if guest, creates guest enquiry."""
+    """Public Contact form. Every submission becomes a support ticket with a
+    number and grievance clocks (docs/compliance: checklist 3.2, 3.3).
+    Signed-in users own the ticket; a guest's contact details are kept in
+    guest_enquiries and linked to the ticket."""
+    from app.modules.support.sla import CONTACT_CATEGORIES
+
+    ip = auth_service.get_client_ip(request)
+    await auth_service.check_rate_limit(db, f"ratelimit:contact:ip:{ip}", max_attempts=10, window_seconds=300)
+    category = CONTACT_CATEGORIES.get((req.category or "general").strip().lower(), "general")
+    description = req.message
+    if req.booking_reference:
+        description = f"Booking reference: {req.booking_reference}\n\n{description}"
+
     if current_user:
         ticket = await support_service.create_ticket(
             db,
             current_user.id,
             subject=req.subject,
-            description=req.message,
-            category="general",
+            description=description,
+            category=category,
         )
-        return ContactSubmitResponse(
-            success=True,
-            ticket_id=str(ticket.id),
-            message="Your message has been received. Our team will review your support ticket.",
-        )
+        message = f"We have received your message. Your ticket number is {ticket.ticket_number}."
+        enquiry_id = None
     else:
         async with db.begin():
             enquiry = await help_service.create_guest_enquiry(
@@ -3218,9 +3439,32 @@ async def submit_contact_form_route(
                 subject=req.subject,
                 message=req.message,
             )
-        return ContactSubmitResponse(
-            success=True,
-            enquiry_id=str(enquiry.id),
-            message="Thank you for reaching out! We have received your message and will get back to you shortly.",
+            enquiry_id = enquiry.id
+        ticket = await support_service.create_ticket(
+            db,
+            None,
+            guest_enquiry_id=enquiry_id,
+            subject=req.subject,
+            description=description,
+            category=category,
         )
+        message = (
+            f"Thank you. Your ticket number is {ticket.ticket_number}. "
+            "Our team will reply to the email or phone number you gave."
+        )
+    return ContactSubmitResponse(
+        success=True,
+        ticket_id=str(ticket.id),
+        enquiry_id=str(enquiry_id) if enquiry_id else None,
+        ticket_number=ticket.ticket_number,
+        ack_due_at=ticket.ack_due_at,
+        resolve_due_at=ticket.resolve_due_at,
+        message=message,
+    )
 
+
+# Super admin control of the website: homepage content and versions, the
+# image asset library, review moderation (hide with reason, feature).
+from app.routers.site import router as site_router
+
+app.include_router(site_router)

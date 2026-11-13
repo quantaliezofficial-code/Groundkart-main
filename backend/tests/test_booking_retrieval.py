@@ -65,7 +65,7 @@ async def test_unauthenticated_booking_is_still_a_guest_checkout(client, seeded_
         "/api/v1/bookings",
         json={
             "inventory_unit_id": str(seeded_unit),
-            "guest_name": "Raj Kumar",
+            "age_confirmed": True, "guest_name": "Raj Kumar",
             "guest_email": "raj@example.com",
         },
     )
@@ -81,7 +81,7 @@ async def test_invalid_token_degrades_to_guest_not_401(client, seeded_unit):
         "/api/v1/bookings",
         json={
             "inventory_unit_id": str(seeded_unit),
-            "guest_name": "Raj Kumar",
+            "age_confirmed": True, "guest_name": "Raj Kumar",
             "guest_email": "raj@example.com",
         },
         headers={"Authorization": "Bearer not-a-real-token"},
@@ -100,7 +100,7 @@ async def test_authenticated_request_with_guest_fields_is_rejected(
         "/api/v1/bookings",
         json={
             "inventory_unit_id": str(seeded_unit),
-            "guest_name": "Someone Else",
+            "age_confirmed": True, "guest_name": "Someone Else",
             "guest_email": "someone@example.com",
         },
         headers={"Authorization": f"Bearer {token}"},
@@ -198,7 +198,7 @@ async def test_venue_owner_cannot_view_a_customer_booking_via_this_route(
         "/api/v1/bookings",
         json={
             "inventory_unit_id": str(unit_id),
-            "guest_name": "Raj Kumar",
+            "age_confirmed": True, "guest_name": "Raj Kumar",
             "guest_email": "raj@example.com",
         },
     )
@@ -226,7 +226,7 @@ async def test_admin_can_view_a_guest_booking_via_this_route(
 
     guest_resp = await client.post(
         "/api/v1/bookings",
-        json={"inventory_unit_id": str(unit_id), "guest_name": "Raj Kumar", "guest_email": "raj@example.com"},
+        json={"inventory_unit_id": str(unit_id), "age_confirmed": True, "guest_name": "Raj Kumar", "guest_email": "raj@example.com"},
     )
     booking_id = guest_resp.json()["booking_id"]
 
@@ -275,7 +275,7 @@ async def test_my_bookings_excludes_guest_bookings_even_same_email(
         "/api/v1/bookings",
         json={
             "inventory_unit_id": str(seeded_unit),
-            "guest_name": "Same Person",
+            "age_confirmed": True, "guest_name": "Same Person",
             "guest_email": "matching@example.com",
         },
     )
@@ -290,7 +290,7 @@ async def test_guest_can_view_their_booking_via_manage_token(client, seeded_unit
         "/api/v1/bookings",
         json={
             "inventory_unit_id": str(seeded_unit),
-            "guest_name": "Raj Kumar",
+            "age_confirmed": True, "guest_name": "Raj Kumar",
             "guest_email": "raj@example.com",
         },
     )
@@ -306,7 +306,7 @@ async def test_wrong_manage_token_returns_404(client, seeded_unit):
         "/api/v1/bookings",
         json={
             "inventory_unit_id": str(seeded_unit),
-            "guest_name": "Raj Kumar",
+            "age_confirmed": True, "guest_name": "Raj Kumar",
             "guest_email": "raj@example.com",
         },
     )
@@ -322,7 +322,7 @@ async def test_manage_token_route_requires_no_auth_header_at_all(client, seeded_
         "/api/v1/bookings",
         json={
             "inventory_unit_id": str(seeded_unit),
-            "guest_name": "Raj Kumar",
+            "age_confirmed": True, "guest_name": "Raj Kumar",
             "guest_email": "raj@example.com",
         },
     )

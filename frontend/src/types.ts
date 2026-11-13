@@ -38,6 +38,8 @@ export type VenueCategoryLabel =
 export type UnitType = 'hour' | 'half_day' | 'full_day';
 
 export interface Venue {
+  /** Who is selling the booking (venue owner), shown before checkout. */
+  seller?: { name: string; business_name: string | null; verified: boolean } | null;
   id: string;
   slug?: string;
   name: string;

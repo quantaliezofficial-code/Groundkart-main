@@ -14,7 +14,7 @@ test.describe('S1 Public Browsing @regression', () => {
     await expect(banquetTile).toBeVisible();
 
     // Featured banner or trending cards
-    const viewDetailsBtn = page.locator('a[href*="/venues/"], div.group:has(h3)').first();
+    const viewDetailsBtn = page.locator('a[href*="/venues/"], div.group:has(h3), article:has(h3)').first();
     await expect(viewDetailsBtn).toBeVisible();
   });
 
@@ -90,7 +90,7 @@ test.describe('S1 Public Browsing @regression', () => {
     await expect(page.locator('h1').first()).toContainText(venueName);
 
     // About section and amenities
-    await expect(page.getByText(/About the Venue|About Our Space/i)).toBeVisible();
+    await expect(page.getByText(/About the Venue|About Our Space/i).first()).toBeVisible();
     await expect(page.getByRole('heading', { name: /Venue Amenities|Amenities/i })).toBeVisible();
 
     // Slots container or date selection

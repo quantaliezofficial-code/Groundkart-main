@@ -547,6 +547,7 @@ async def authenticate_user(
         "email": email,
         "password": password,
         "role": role,
+        "age_confirmed": True,
     }
     signup_resp = await api.request("POST", "/api/v1/auth/signup", json=signup_payload)
     if signup_resp.status_code not in (200, 201):
@@ -932,11 +933,11 @@ async def seed_dataset(
                 if any(ex.get("content") == r["content"] for ex in existing_revs):
                     continue
 
-                review_payload = {
-                    "rating": r["rating"],
-                    "content": r["content"],
-                }
-                await api.post_json(f"/api/v1/venues/{venue_id}/reviews", review_payload, token=cust_token)
+                # The public API only accepts reviews tied to the reviewer's
+                # own completed booking. Demo reviews are written straight to
+                # the database, flagged is_demo, so the DEMO DATA banner shows
+                # and a production server refuses to start with them.
+                await _insert_demo_review(api, venue_id, cust_token, r["rating"], r["content"])
             print("  Reviews processed across all active venues.")
 
         # Step 8: Execute Booking Scenarios
@@ -1060,6 +1061,12 @@ async def seed_dataset(
                             badge="Featured Choice" if priority == 0 else "Top Rated",
                         ))
                 print(f"  Configured {len(featured_refs)} featured placements.")
+
+        # Step 9b: flag everything this script created as DEMO DATA.
+        if not dry_run:
+            from scripts.mark_demo_data import mark_demo_data
+            counts = await mark_demo_data(data.get("meta", {}).get("email_domain_for_demo_users", "groundkart.demo"))
+            print(f"  Flagged as DEMO DATA: {counts}")
 
         # Step 10: Run Verification & Generate SEED_REPORT.md
         if not dry_run:
@@ -1344,6 +1351,26 @@ python backend/scripts/seed_cleanup_dataset.py --yes-this-is-dev
 
 
 
+async def _insert_demo_review(api, venue_id: str, cust_token: str, rating: int, content: str) -> None:
+    me = await api.get_json("/api/v1/users/me", token=cust_token)
+    async with SessionLocal() as db_session:
+        async with db_session.begin():
+            await db_session.execute(
+                text(
+                    "INSERT INTO reviews (venue_id, user_id, rating, content, verified, is_demo) "
+                    "VALUES (:v, :u, :r, :c, true, true)"
+                ),
+                {"v": venue_id, "u": me["id"], "r": rating, "c": content},
+            )
+            await db_session.execute(
+                text(
+                    "UPDATE venues SET avg_rating = COALESCE((SELECT ROUND(AVG(rating)::numeric, 2) FROM reviews "
+                    "WHERE venue_id = :v AND verified), 0) WHERE id = :v"
+                ),
+                {"v": venue_id},
+            )
+
+
 def main():
     default_dataset = os.path.join(os.path.dirname(__file__), "seed_data", "venue_seed_dataset.json")
     if not os.path.exists(default_dataset):
@@ -1358,8 +1385,10 @@ def main():
     parser.add_argument("--yes-this-is-dev", action="store_true", default=bool(os.environ.get("CI") or os.environ.get("TESTING")), help="Explicit confirmation of dev environment")
     parser.add_argument("--dry-run", action="store_true", help="Validate dataset and print planned actions without mutating")
     parser.add_argument("--admin-login", default=os.environ.get("ADMIN_LOGIN", os.environ.get("ADMIN_EMAIL", "admin@groundkart.demo")), help="Admin login ID")
-    parser.add_argument("--admin-password", default=os.environ.get("ADMIN_PASSWORD", "Admin@2026!"), help="Admin password")
+    parser.add_argument("--admin-password", default=os.environ.get("ADMIN_PASSWORD"), help="Admin password (or set ADMIN_PASSWORD); no default")
     args = parser.parse_args()
+    if not args.admin_password:
+        sys.exit("ABORT: pass --admin-password or set ADMIN_PASSWORD. There is deliberately no default admin password.")
 
     check_dev_guard(args.yes_this_is_dev)
 

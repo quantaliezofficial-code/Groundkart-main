@@ -2,6 +2,7 @@ import { SafeImage } from './dashboard';
 
 import GroundSelect from './ui/GroundSelect';
 
+import VideoEmbed from './legal/VideoEmbed';
 import React, { useMemo, useState, useRef, useEffect } from 'react';
 
 import { useQuery } from '@tanstack/react-query';
@@ -13,6 +14,7 @@ import {
   ChevronRight,
 
   MapPin,
+  BadgeCheck,
 
   Star,
 
@@ -1360,7 +1362,7 @@ export default function DetailView({
 
                 <MapPin size={15} className="text-pitch shrink-0" />
 
-                <span>{venue.district}, {venue.city}</span>
+                <span data-testid="venue-address">{venue.district}, {venue.city}</span>
 
                 {venue.latitude && venue.longitude && (
 
@@ -1406,6 +1408,15 @@ export default function DetailView({
 
             </div>
 
+            {venue.seller && (
+              <p data-testid="seller-info" className="mt-3 inline-flex flex-wrap items-center gap-1.5 text-xs text-on-surface-variant">
+                <BadgeCheck size={14} className={venue.seller.verified ? "text-pitch" : "text-ink/30"} aria-hidden />
+                Listed by <span className="font-semibold text-ink">{venue.seller.business_name || venue.seller.name}</span>
+                {venue.seller.business_name && <span>({venue.seller.name})</span>}
+                {venue.seller.verified && <span className="text-pitch">· Verified owner</span>}
+                <span>· Contact the owner through GroundKart</span>
+              </p>
+            )}
           </header>
 
 
@@ -1956,25 +1967,6 @@ export default function DetailView({
 
                     const isVimeo = vItem.url.includes('vimeo.com');
 
-                    let embedUrl = vItem.url;
-
-                    if (isYt) {
-
-                      const videoId = vItem.url.includes('youtu.be/')
-
-                        ? vItem.url.split('youtu.be/')[1]?.split('?')[0]
-
-                        : new URLSearchParams(vItem.url.split('?')[1] || '').get('v');
-
-                      embedUrl = videoId ? `https://www.youtube.com/embed/${videoId}` : vItem.url;
-
-                    } else if (isVimeo) {
-
-                      const vimeoId = vItem.url.split('/').filter(Boolean).pop();
-
-                      embedUrl = `https://player.vimeo.com/video/${vimeoId}`;
-
-                    }
 
                     return (
 
@@ -1988,19 +1980,7 @@ export default function DetailView({
 
                         {isYt || isVimeo ? (
 
-                          <iframe
-
-                            src={embedUrl}
-
-                            title={`${venue.name} Video Tour`}
-
-                            className="w-full h-full"
-
-                            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-
-                            allowFullScreen
-
-                          />
+                          <VideoEmbed url={vItem.url} title={`${venue.name} video tour`} />
 
                         ) : (
 
@@ -2694,7 +2674,7 @@ export default function DetailView({
 
                       <FadeInWhenVisible key={review.id} delay={index * 0.05}>
 
-                        <div className="bg-mist/30 p-4 sm:p-5 rounded-2xl border border-ink/8 hover:border-pitch/20 transition duration-200 relative group">
+                        <div data-testid="review-item" className="bg-mist/30 p-4 sm:p-5 rounded-2xl border border-ink/8 hover:border-pitch/20 transition duration-200 relative group">
 
                           {isAdmin && (
 
@@ -2731,6 +2711,11 @@ export default function DetailView({
                                 {review.user_name}
 
                               </p>
+                              {review.verified_booking && (
+                                <p className="mt-0.5 inline-flex items-center gap-1 text-[11px] font-semibold text-pitch">
+                                  <BadgeCheck size={12} aria-hidden /> Verified booking
+                                </p>
+                              )}
 
                               <div className="flex text-marigold">
 

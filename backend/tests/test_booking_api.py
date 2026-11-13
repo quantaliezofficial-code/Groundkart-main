@@ -37,7 +37,7 @@ async def test_create_guest_booking_returns_manage_token(client, seeded_unit):
         "/api/v1/bookings",
         json={
             "inventory_unit_id": str(seeded_unit),
-            "guest_name": "Priya Sharma",
+            "age_confirmed": True, "guest_name": "Priya Sharma",
             "guest_email": "priya@example.com",
         },
     )
@@ -52,7 +52,7 @@ async def test_second_request_for_same_unit_gets_409(client, seeded_unit):
         "/api/v1/bookings",
         json={
             "inventory_unit_id": str(seeded_unit),
-            "guest_name": "Priya Sharma",
+            "age_confirmed": True, "guest_name": "Priya Sharma",
             "guest_email": "priya@example.com",
         },
     )
@@ -62,7 +62,7 @@ async def test_second_request_for_same_unit_gets_409(client, seeded_unit):
         "/api/v1/bookings",
         json={
             "inventory_unit_id": str(seeded_unit),
-            "guest_name": "Raj Kumar",
+            "age_confirmed": True, "guest_name": "Raj Kumar",
             "guest_email": "raj@example.com",
         },
     )
@@ -74,6 +74,6 @@ async def test_half_guest_request_is_rejected_with_422(client, seeded_unit):
     all (BookingCreateRequest's validator catches it first)."""
     resp = await client.post(
         "/api/v1/bookings",
-        json={"inventory_unit_id": str(seeded_unit), "guest_name": "Only Name"},
+        json={"inventory_unit_id": str(seeded_unit), "age_confirmed": True, "guest_name": "Only Name"},
     )
     assert resp.status_code == 422

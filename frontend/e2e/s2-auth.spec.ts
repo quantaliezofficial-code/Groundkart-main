@@ -35,7 +35,7 @@ test.describe('S2 Authentication Suite @regression', () => {
     await authModal.signup(name, email, phone, pass, 'owner');
 
     // Should land in owner onboarding gate or dashboard
-    await expect(page.getByRole('heading', { name: /List your venue on GroundKart|Owner/i }).or(page.locator('button[aria-label="Account menu"]'))).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole('heading', { name: /List your venue on GroundKart|Owner/i }).or(page.locator('button[aria-label="Account menu"]')).first()).toBeVisible({ timeout: 15_000 });
   });
 
   test('validation messages: wrong password, invalid phone, duplicate phone', async ({ page, consoleGuard }) => {

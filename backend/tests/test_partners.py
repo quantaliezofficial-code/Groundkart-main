@@ -325,7 +325,7 @@ async def _attribute_seeded_venue(test_session_factory, unit_id, broker_id) -> u
 async def _book_and_pay(client, unit_id, admin_id) -> dict:
     created = await client.post(
         "/api/v1/bookings",
-        json={"inventory_unit_id": str(unit_id), "guest_name": "Raj Kumar", "guest_email": "raj@example.com"},
+        json={"inventory_unit_id": str(unit_id), "age_confirmed": True, "guest_name": "Raj Kumar", "guest_email": "raj@example.com"},
     )
     assert created.status_code == 201, created.text
     booking = created.json()

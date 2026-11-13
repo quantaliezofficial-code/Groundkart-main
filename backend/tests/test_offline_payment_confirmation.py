@@ -39,7 +39,7 @@ async def _create_booking(client, unit_id) -> dict:
         "/api/v1/bookings",
         json={
             "inventory_unit_id": str(unit_id),
-            "guest_name": "Raj Kumar",
+            "age_confirmed": True, "guest_name": "Raj Kumar",
             "guest_email": "raj@example.com",
         },
     )

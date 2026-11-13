@@ -67,4 +67,18 @@ describe('Toast notification system', () => {
 
     expect(screen.queryByText('Something broke!')).not.toBeInTheDocument();
   });
+
+  it('does not stack copies of the same message when an action repeats', () => {
+    render(
+      <ToastProvider>
+        <TestConsumer />
+      </ToastProvider>
+    );
+    act(() => {
+      screen.getByText('Trigger Error').click();
+      screen.getByText('Trigger Error').click();
+      screen.getByText('Trigger Error').click();
+    });
+    expect(screen.getAllByText('Something broke!')).toHaveLength(1);
+  });
 });

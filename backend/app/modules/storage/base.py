@@ -38,6 +38,8 @@ class UnsupportedFileError(Exception):
 
 
 class FileStorage(Protocol):
+    async def delete(self, key: str) -> None: ...
+
     async def save(self, content: bytes, content_type: str, key_prefix: str) -> tuple[str, str]:
         """Returns a tuple of (URL, storage_key). Raises
         UnsupportedFileError for anything failing the size/type checks —
@@ -96,6 +98,13 @@ class LocalFileStorage:
         }
         content_type = content_type_map.get(ext, "application/octet-stream")
         return content, content_type
+
+    async def delete(self, key: str) -> None:
+        """Used by erasure and retention (DPDP s.8(7)). Missing files are fine."""
+        path = (self.base_dir / key).resolve()
+        if self.base_dir.resolve() not in path.parents:
+            raise ValueError("refusing to delete outside the storage directory")
+        path.unlink(missing_ok=True)
 
 
 class S3FileStorage:
@@ -174,6 +183,16 @@ class S3FileStorage:
             content_type = resp.get("ContentType", "application/octet-stream")
             data = await resp["Body"].read()
             return data, content_type
+
+    async def delete(self, key: str) -> None:
+        async with self.session.client(
+            "s3",
+            endpoint_url=self.endpoint_url,
+            region_name=self.region,
+            aws_access_key_id=settings.s3_access_key_id,
+            aws_secret_access_key=settings.s3_secret_access_key,
+        ) as client:
+            await client.delete_object(Bucket=self.bucket_name, Key=key)
 
 
 def get_storage() -> FileStorage:

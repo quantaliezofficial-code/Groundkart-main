@@ -8,3 +8,9 @@ __pycache__/
 venv/
 tests/
 *.log
+backups/
+*.dump
+*.sql.gz
+uploads/
+private_uploads/
+.git

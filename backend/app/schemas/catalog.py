@@ -201,9 +201,19 @@ class VenueMediaResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class SellerView(BaseModel):
+    """E-Commerce Rules 2020 r.5(3): who the seller is, shown before
+    booking. No private phone or email: customers contact the seller
+    through GroundKart (Q-8 for the lawyer)."""
+    name: str
+    business_name: str | None = None
+    verified: bool = False
+
+
 class VenueResponse(BaseModel):
     id: uuid.UUID
     owner_id: uuid.UUID
+    seller: SellerView | None = None
     name: str
     display_name: str | None
     tagline: str | None
@@ -253,7 +263,12 @@ class VenueResponse(BaseModel):
         raw_options = state.dict.get("rental_options") or []
         raw_purposes = state.dict.get("purposes") or []
         reviews = state.dict.get("reviews")
-        review_count = len(reviews) if reviews is not None else 0
+        # Same rule as the rating: verified-booking reviews that are not hidden.
+        review_count = (
+            sum(1 for r in reviews if getattr(r, "verified", False) and getattr(r, "hidden_at", None) is None)
+            if reviews is not None
+            else 0
+        )
 
         purposes_out = []
         for p in raw_purposes:
@@ -380,6 +395,7 @@ class ReviewResponse(BaseModel):
     rating: int
     content: str
     created_at: datetime
+    verified_booking: bool = False
 
     model_config = {"from_attributes": True}
 

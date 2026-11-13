@@ -1,18 +1,23 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { ArrowRight, ChevronLeft, ChevronRight, X } from 'lucide-react';
-import Hero from '../Hero';
+import Hero, { OccasionGrid } from '../Hero';
+import { BookingProtections, FounderStory, GuidedBookingPreview, VerifiedReviews } from './TrustSections';
 import VenueCard from '../VenueCard';
 import { platformApi, type PublicBanner } from '../../lib/api/platform';
 import type { ApiHomepageResponse } from '../../lib/api/types';
 import type { Venue } from '../../types';
+import { isSafeInternalPath } from '../../lib/safeUrl';
+import { DEFAULT_HOMEPAGE, responsiveImage, useHomepageContent } from '../../lib/homepageContent';
 
 /**
  * The homepage. What it does and does not contain is deliberate:
  *
  * - Every claim is one the product actually keeps. No invented reviews,
  *   counts, logos or "instant confirmation": bookings are requests that are
- *   confirmed once payment is recorded, and the page says so.
+ *   confirmed once payment is recorded, and the page says so. Reviews shown
+ *   come only from completed bookings, and the section hides when there are
+ *   none.
  * - Content is visible on first paint. Nothing waits for a scroll
  *   animation, so search engines, slow phones and screen readers all get
  *   the whole page.
@@ -44,9 +49,7 @@ interface HomePageProps {
 
 const STRIP_DISMISS_KEY = 'groundkart_dismissed_strip';
 
-function isInternal(url: string) {
-  return url.startsWith('/') && !url.startsWith('//');
-}
+const isInternal = isSafeInternalPath;
 
 function BannerLink({
   banner,
@@ -83,9 +86,11 @@ function BannerLink({
 }
 
 function AnnouncementStrip({ banner, onNavigate }: { banner: PublicBanner; onNavigate: (p: string) => void }) {
+  // Closed once means closed on this browser until the admin publishes a
+  // different announcement (a new id), not just until the tab is closed.
   const [dismissed, setDismissed] = useState(() => {
     try {
-      return sessionStorage.getItem(STRIP_DISMISS_KEY) === banner.id;
+      return localStorage.getItem(STRIP_DISMISS_KEY) === banner.id;
     } catch {
       return false;
     }
@@ -111,7 +116,7 @@ function AnnouncementStrip({ banner, onNavigate }: { banner: PublicBanner; onNav
           onClick={() => {
             setDismissed(true);
             try {
-              sessionStorage.setItem(STRIP_DISMISS_KEY, banner.id);
+              localStorage.setItem(STRIP_DISMISS_KEY, banner.id);
             } catch {
               /* ignore */
             }
@@ -206,43 +211,7 @@ function VenueGridSkeleton() {
   );
 }
 
-const STEPS = [
-  {
-    title: 'Search and compare',
-    body: 'Filter by city, date, guests and budget. Each listing shows its photos, what the price covers, capacity and house rules.',
-  },
-  {
-    title: 'Request your date',
-    body: 'Pick a slot or a full day and send the request with your details. The slot is held for you while payment is arranged.',
-  },
-  {
-    title: 'Pay and get confirmed',
-    body: 'Pay by UPI, bank transfer or cash as agreed. Once our team records the payment, your booking is confirmed with a reference number.',
-  },
-];
-
-export const HOME_FAQ = [
-  {
-    q: 'Is my booking confirmed as soon as I send the request?',
-    a: 'No. Sending a request holds the slot for you. The booking is confirmed once your payment has been received and recorded, and you will see it marked confirmed in My Bookings.',
-  },
-  {
-    q: 'How do I pay?',
-    a: 'After you send a request, our team shares payment details. You can pay by UPI, bank transfer or cash, as agreed for that venue. Card payments on the site are not available yet.',
-  },
-  {
-    q: 'Can I cancel?',
-    a: 'Yes. How much is refunded depends on how far ahead of the event you cancel. The cancellation terms are shown before you send a request and again on your booking.',
-  },
-  {
-    q: 'How are venues checked?',
-    a: 'Owners verify their identity before they can list, and every listing is reviewed by our team before it is published. Changes to key details go back for review.',
-  },
-  {
-    q: 'I own a venue. What does it cost to list?',
-    a: 'Listing is free. GroundKart keeps a commission only on bookings made through the platform, and every payout is recorded against the bookings it covers.',
-  },
-];
+export const HOME_FAQ = DEFAULT_HOMEPAGE.faq;
 
 export default function HomePage({
   venues,
@@ -262,6 +231,9 @@ export default function HomePage({
     queryFn: () => platformApi.publicBanners(),
     staleTime: 60_000,
   });
+  const content = useHomepageContent();
+  const show = content.sections;
+  const ownersImg = responsiveImage(content.owners.image_url);
   const heroBanners = banners.filter((b) => b.placement === 'home_hero');
   const strip = banners.find((b) => b.placement === 'home_strip');
 
@@ -310,7 +282,10 @@ export default function HomePage({
         onOccasion={onOccasion}
         onListVenue={onListVenue}
         belowStrip={Boolean(strip)}
+        content={content}
       />
+
+      {show.occasions ? <OccasionGrid onOccasion={onOccasion} occasions={content.occasions} /> : null}
 
       <PromoBanners banners={heroBanners} onNavigate={onNavigate} />
 
@@ -350,67 +325,52 @@ export default function HomePage({
         </section>
       )}
 
-      {/* ---- How booking works ---- */}
-      <section aria-labelledby="how-heading" className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 mt-20 sm:mt-28">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
-          <div className="lg:col-span-4">
-            <h2 id="how-heading" className="font-display text-3xl sm:text-4xl font-semibold text-ink leading-tight">
-              How booking works
-            </h2>
-            <p className="mt-3 text-[15px] leading-relaxed text-on-surface-variant max-w-sm">
-              A booking is a request first and a confirmed reservation once it is paid. You always know which one you have.
-            </p>
-          </div>
-          <ol className="lg:col-span-8 grid grid-cols-1 md:grid-cols-3 gap-6">
-            {STEPS.map((s, i) => (
-              <li key={s.title} className="rounded-2xl bg-chalk p-6 ring-1 ring-ink/5">
-                <span className="flex h-9 w-9 items-center justify-center rounded-full bg-pitch text-sm font-semibold text-marigold tabular">
-                  {i + 1}
-                </span>
-                <h3 className="mt-4 text-lg font-semibold text-ink">{s.title}</h3>
-                <p className="mt-2 text-[15px] leading-relaxed text-on-surface-variant">{s.body}</p>
-              </li>
-            ))}
-          </ol>
-        </div>
-      </section>
+      {show.protections ? <BookingProtections onNavigate={onNavigate} copy={content.protections} /> : null}
+
+      {show.preview ? <GuidedBookingPreview copy={content.preview} /> : null}
+
+      {show.reviews ? <VerifiedReviews onOpenVenue={onOpenVenue} copy={content.reviews} /> : null}
 
       {/* ---- Owners and partners ---- */}
+      {show.owners || show.partners ? (
       <section aria-labelledby="owners-heading" className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 mt-20 sm:mt-28">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          <div className="lg:col-span-8 grid grid-cols-1 md:grid-cols-2 overflow-hidden rounded-3xl bg-pitch text-chalk">
+          {show.owners ? (
+          <div className={`${show.partners ? 'lg:col-span-8' : 'lg:col-span-12'} grid grid-cols-1 md:grid-cols-2 overflow-hidden rounded-3xl bg-pitch text-chalk`}>
             <div className="relative min-h-[240px]">
               <img
-                src="/img/occasions/dusk-weddings.webp"
-                srcSet="/img/occasions/dusk-weddings-sm.webp 320w, /img/occasions/dusk-weddings.webp 472w"
-                sizes="(min-width: 1024px) 33vw, (min-width: 768px) 50vw, 100vw"
-                alt="A wedding lawn set up with a floral mandap at dusk"
+                src={content.owners.image_url}
+                srcSet={ownersImg?.srcSet}
+                sizes={ownersImg ? '(min-width: 1024px) 33vw, (min-width: 768px) 50vw, 100vw' : undefined}
+                alt={content.owners.image_alt}
                 loading="lazy"
                 decoding="async"
-                width={472}
-                height={344}
+                width={ownersImg?.width ?? 960}
+                height={ownersImg?.height ?? 720}
                 className="absolute inset-0 h-full w-full object-cover"
               />
             </div>
             <div className="flex flex-col justify-center p-7 sm:p-9">
               <h2 id="owners-heading" className="font-display text-2xl sm:text-3xl font-semibold leading-tight">
-                List your venue for free
+                {content.owners.title}
               </h2>
               <ul className="mt-5 space-y-3 text-[15px] text-chalk/85">
-                <li>Your listing is reviewed by our team before it goes live.</li>
-                <li>Pricing, open dates and blocked days in one dashboard.</li>
-                <li>A commission only on bookings that come through GroundKart.</li>
+                {content.owners.bullets.map((b) => (
+                  <li key={b}>{b}</li>
+                ))}
               </ul>
               <button
                 type="button"
                 onClick={onListVenue}
                 className="mt-7 inline-flex w-fit items-center gap-2 rounded-full bg-marigold px-5 py-2.5 text-sm font-semibold text-pitch hover:brightness-105 cursor-pointer"
               >
-                List your venue <ArrowRight size={16} aria-hidden="true" />
+                {content.owners.cta_label} <ArrowRight size={16} aria-hidden="true" />
               </button>
             </div>
           </div>
-          <div className="lg:col-span-4 flex flex-col justify-between rounded-3xl bg-chalk p-7 sm:p-9 ring-1 ring-ink/5">
+          ) : null}
+          {show.partners ? (
+          <div className={`${show.owners ? 'lg:col-span-4' : 'lg:col-span-12'} flex flex-col justify-between rounded-3xl bg-chalk p-7 sm:p-9 ring-1 ring-ink/5`}>
             <div>
               <h2 className="font-display text-2xl font-semibold text-ink leading-tight">Referral partners</h2>
               <p className="mt-3 text-[15px] leading-relaxed text-on-surface-variant">
@@ -432,17 +392,22 @@ export default function HomePage({
               Become a partner <ArrowRight size={16} aria-hidden="true" />
             </a>
           </div>
+          ) : null}
         </div>
       </section>
+      ) : null}
+
+      {show.founder ? <FounderStory onNavigate={onNavigate} founder={content.founder} /> : null}
 
       {/* ---- Questions ---- */}
+      {show.faq && content.faq.length ? (
       <section aria-labelledby="faq-heading" className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 mt-20 sm:mt-28">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
           <h2 id="faq-heading" className="lg:col-span-4 font-display text-3xl sm:text-4xl font-semibold text-ink leading-tight">
             Questions people ask
           </h2>
           <div className="lg:col-span-8 divide-y divide-ink/10 border-y border-ink/10">
-            {HOME_FAQ.map((item) => (
+            {content.faq.map((item) => (
               <details key={item.q} className="group py-5">
                 <summary className="flex cursor-pointer list-none items-center justify-between gap-4 text-[17px] font-semibold text-ink [&::-webkit-details-marker]:hidden">
                   {item.q}
@@ -459,22 +424,25 @@ export default function HomePage({
           </div>
         </div>
       </section>
+      ) : null}
 
       {/* ---- Closing ---- */}
+      {show.closing ? (
       <section className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 mt-20 sm:mt-28 mb-20">
         <div className="flex flex-col items-start justify-between gap-6 rounded-3xl bg-pitch px-7 py-10 sm:flex-row sm:items-center sm:px-12">
           <h2 className="font-display text-2xl sm:text-3xl font-semibold text-chalk max-w-xl leading-tight">
-            Have a date in mind? See which venues are open.
+            {content.closing.title}
           </h2>
           <button
             type="button"
             onClick={onBrowseAll}
             className="inline-flex shrink-0 items-center gap-2 rounded-full bg-marigold px-6 py-3 text-[15px] font-semibold text-pitch hover:brightness-105 cursor-pointer"
           >
-            Browse venues <ArrowRight size={16} aria-hidden="true" />
+            {content.closing.cta_label} <ArrowRight size={16} aria-hidden="true" />
           </button>
         </div>
       </section>
+      ) : <div className="mb-20" />}
     </div>
   );
 }

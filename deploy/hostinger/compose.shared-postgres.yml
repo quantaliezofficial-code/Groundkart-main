@@ -1,0 +1,25 @@
+# Optional: use the VPS's existing PostgreSQL container instead of the
+# bundled "db" service (the way Exotique is set up).
+#
+# In .env:
+#   COMPOSE_FILE=docker-compose.yml:deploy/hostinger/compose.shared-postgres.yml
+#   DB_MODE=shared
+#   SHARED_DB_NETWORK=<docker network the shared PostgreSQL is on>
+#   SHARED_DB_HOST=<its container name on that network>
+#   SHARED_DB_NAME=groundkart_db
+#   SHARED_DB_USER=groundkart_user
+#   SHARED_DB_PASSWORD=<password>
+#   DATABASE_URL=postgresql+asyncpg://groundkart_user:<password>@<host>:5432/groundkart_db
+#
+# The deploy workflow starts only "api" and "web" (--no-deps), so the bundled
+# db and backup services are never started in this mode.
+services:
+  api:
+    networks:
+      - default
+      - shared-db
+
+networks:
+  shared-db:
+    external: true
+    name: ${SHARED_DB_NETWORK:?set SHARED_DB_NETWORK in .env}

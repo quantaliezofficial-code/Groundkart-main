@@ -42,3 +42,12 @@ class OwnerBankAccountResponse(BaseModel):
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+    # Stored encrypted, returned masked. Admins who need the full number to
+    # make a payout use the audited reveal endpoint.
+    @field_validator("account_number", mode="after")
+    @classmethod
+    def _mask(cls, v: str) -> str:
+        from app.modules.core.crypto import mask
+
+        return mask(v) or ""

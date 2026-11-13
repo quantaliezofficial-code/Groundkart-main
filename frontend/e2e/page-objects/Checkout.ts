@@ -30,6 +30,9 @@ export class CheckoutPO {
     await this.guestNameInput.fill(name);
     await this.guestEmailInput.fill(email);
     await this.guestPhoneInput.fill(phone);
+    // Adults-only rule: guests confirm they are 18 or older (unticked by default).
+    const age = this.page.locator('#checkout-age-confirm');
+    if (await age.count()) await age.check();
   }
 
   async submitBooking() {

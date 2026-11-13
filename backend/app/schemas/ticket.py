@@ -16,7 +16,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 class TicketCreateRequest(BaseModel):
     subject: str = Field(..., min_length=1, max_length=200)
     description: str = Field(..., min_length=1, max_length=5000)
-    category: Literal["general", "billing", "venue_issue", "dispute", "help_request"] = "general"
+    category: Literal["general", "billing", "venue_issue", "dispute", "help_request", "grievance", "content_report", "data_request"] = "general"
     priority: Literal["low", "medium", "high", "urgent"] = "medium"
     booking_id: uuid.UUID | None = None
     venue_id: uuid.UUID | None = None
@@ -77,6 +77,14 @@ class TicketEventResponse(BaseModel):
         )
 
 
+def _sla_state(ticket) -> str | None:
+    from app.modules.support.sla import sla_state
+
+    if getattr(ticket, "resolve_due_at", None) is None:
+        return None
+    return sla_state(ticket)
+
+
 class TicketResponse(BaseModel):
     id: str
     subject: str
@@ -84,7 +92,14 @@ class TicketResponse(BaseModel):
     status: str
     category: str
     priority: str
-    creator_id: str
+    creator_id: str | None = None
+    ticket_number: str | None = None
+    ack_due_at: datetime | None = None
+    resolve_due_at: datetime | None = None
+    acknowledged_at: datetime | None = None
+    # on_track | ack_overdue | resolve_overdue | done (app/modules/support/sla.py)
+    sla_state: str | None = None
+    is_guest: bool = False
     assignee_id: str | None = None
     booking_id: str | None = None
     venue_id: str | None = None
@@ -108,7 +123,13 @@ class TicketResponse(BaseModel):
             status=ticket.status,
             category=ticket.category,
             priority=ticket.priority,
-            creator_id=str(ticket.creator_id),
+            creator_id=str(ticket.creator_id) if ticket.creator_id else None,
+            ticket_number=getattr(ticket, "ticket_number", None),
+            ack_due_at=getattr(ticket, "ack_due_at", None),
+            resolve_due_at=getattr(ticket, "resolve_due_at", None),
+            acknowledged_at=getattr(ticket, "acknowledged_at", None),
+            sla_state=_sla_state(ticket),
+            is_guest=ticket.creator_id is None,
             assignee_id=str(ticket.assignee_id) if ticket.assignee_id else None,
             booking_id=str(ticket.booking_id) if ticket.booking_id else None,
             venue_id=str(ticket.venue_id) if ticket.venue_id else None,

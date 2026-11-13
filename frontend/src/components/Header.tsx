@@ -207,7 +207,7 @@ function NotificationBell() {
 
 /* ─── Header ─────────────────────────────────────────────────────────── */
 
-type HeaderView = 'home' | 'search' | 'detail' | 'checkout' | 'my-bookings' | 'support' | 'about' | 'contact' | 'terms' | 'privacy' | '404';
+type HeaderView = 'home' | 'search' | 'detail' | 'checkout' | 'my-bookings' | 'support' | 'about' | 'contact' | 'terms' | 'privacy' | 'legal' | 'my-data' | '404';
 
 interface HeaderProps {
   currentView: HeaderView;
@@ -293,7 +293,7 @@ export default function Header({
               </motion.button>
 
               {/* ── Center search ── */}
-              {currentView !== 'detail' && user?.role !== 'owner' && (
+              {currentView !== 'detail' && currentView !== 'home' && user?.role !== 'owner' && (
                 <motion.div
                   className="relative hidden md:block mx-4 lg:mx-8 w-[280px] lg:w-[340px]"
                 >
@@ -426,6 +426,12 @@ export default function Header({
                               <User size={15} className="text-on-surface-variant" /> My Bookings
                             </button>
                           )}
+                          <button
+                            onClick={() => { setShowProfileMenu(false); onNavigate('my-data'); }}
+                            className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-[13px] text-ink hover:bg-mist transition-colors ease-out"
+                          >
+                            <ShieldCheck size={15} className="text-on-surface-variant" /> My data and privacy
+                          </button>
                           <div className="border-t border-ink/5 mt-0.5 pt-0.5">
                             <button
                               onClick={() => { setShowProfileMenu(false); void logout(); }}
@@ -475,7 +481,7 @@ export default function Header({
             >
               <div className="max-w-7xl mx-auto px-4 py-4 space-y-2">
                 {/* Mobile search */}
-                {currentView !== 'detail' && user?.role !== 'owner' && (
+                {currentView !== 'detail' && currentView !== 'home' && user?.role !== 'owner' && (
                   <div className="relative mb-3">
                     <span className="absolute left-4 top-1/2 -translate-y-1/2 text-chalk/40">
                       <Search size={16} />

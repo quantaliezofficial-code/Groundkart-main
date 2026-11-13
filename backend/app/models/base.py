@@ -135,6 +135,8 @@ TicketStatus = PGEnum(
 
 TicketCategory = PGEnum(
     "general", "billing", "venue_issue", "dispute", "help_request",
+    # j1_compliance_core: grievance clocks differ by category
+    "grievance", "content_report", "data_request",
     name="ticket_category", create_type=False,
 )
 

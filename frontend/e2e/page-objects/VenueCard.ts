@@ -9,7 +9,7 @@ export class VenueCardPO {
 
   getCards(): Locator {
     // Venue cards are styled card divs containing an h3 with venue title
-    return this.page.locator('#results-grid > div, div.group:has(h3)');
+    return this.page.locator('#results-grid > div, div.group:has(h3), article:has(h3)');
   }
 
   getCardByName(name: string): Locator {

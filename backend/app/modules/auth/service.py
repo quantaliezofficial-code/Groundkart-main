@@ -62,6 +62,26 @@ def get_client_ip(request: Request) -> str:
     return "127.0.0.1"
 
 
+_RATE_LIMIT_WORDS = {"ratelimit", "login", "signup", "forgot", "reset", "refresh", "ticket", "comment", "user", "ip", "refcode", "refapply", "contact", "erase", "otp"}
+
+
+def _hashed_rate_limit_key(key: str) -> str:
+    """'ratelimit:login:9876543210' -> 'ratelimit:login:h:<hmac>'. Keeps the
+    structural prefix readable for debugging and replaces the identifier
+    (phone, email, IP, user id) with a keyed hash, so the table never holds
+    personal data in clear text (DATA_MAP row 23)."""
+    from app.modules.core.crypto import keyed_hash
+
+    parts = key.split(":")
+    i = 0
+    while i < len(parts) and parts[i] in _RATE_LIMIT_WORDS:
+        i += 1
+    ident = ":".join(parts[i:])
+    if not ident or ident.startswith("h:"):
+        return key
+    return ":".join(parts[:i] + ["h", keyed_hash(ident, "ratelimit")])
+
+
 async def check_rate_limit(
     session: AsyncSession,
     key: str,
@@ -72,7 +92,7 @@ async def check_rate_limit(
     Normalizes key whitespace/casing. Returns exact retry-after seconds in standard
     Retry-After response header and detail message when limit is exceeded.
     """
-    normalized_key = ":".join(part.strip().lower() for part in key.split(":"))
+    normalized_key = _hashed_rate_limit_key(":".join(part.strip().lower() for part in key.split(":")))
     async with session.begin():
         result = await session.execute(
             text(
@@ -242,9 +262,15 @@ def _build_refresh_token(user_id: uuid.UUID) -> tuple[RefreshToken, str]:
     return rt, raw
 
 
-async def login(session: AsyncSession, login_id: str, password: str) -> tuple[User, str, str]:
-    """Returns (user, access_token, raw_refresh_token)."""
+async def login(session: AsyncSession, login_id: str, password: str, otp: str | None = None) -> tuple[User, str, str]:
+    """Returns (user, access_token, raw_refresh_token).
+
+    Admins who have enrolled in two-step sign-in must also send ``otp``: a
+    current authenticator code or one unused recovery code. Without it the
+    response is 401 ``two_factor_required`` (only after the password has
+    been checked, so it reveals nothing to someone without the password)."""
     invalid = HTTPException(status_code=401, detail="Incorrect email, phone or password")
+    amr = ["pwd"]
 
     async with session.begin():
         result = await session.execute(select(User).where((User.email == login_id) | (User.phone == login_id)))
@@ -259,11 +285,41 @@ async def login(session: AsyncSession, login_id: str, password: str) -> tuple[Us
         if not verify_password(password, user.password_hash):
             raise invalid
 
+        if user.totp_enabled_at is not None:
+            if not otp:
+                raise HTTPException(status_code=401, detail="two_factor_required")
+            if not _check_second_factor(user, otp):
+                raise HTTPException(status_code=401, detail="Invalid two-step code")
+            amr = ["pwd", "otp"]
+
+        user.last_active_at = datetime.now(timezone.utc)
+        user.inactivity_warned_at = None
         refresh_token_row, raw_refresh = _build_refresh_token(user.id)
         session.add(refresh_token_row)
 
-    access_token = create_access_token(user.id, user.role)
+    access_token = create_access_token(user.id, user.role, amr=amr)
     return user, access_token, raw_refresh
+
+
+def _check_second_factor(user: User, code: str) -> bool:
+    """TOTP code (replay-protected) or a single-use recovery code."""
+    from app.modules.auth import totp
+    from app.modules.core.crypto import decrypt
+
+    secret = decrypt(user.totp_secret_enc)
+    if secret:
+        step = totp.verify(secret, code, last_used_step=user.totp_last_used_step)
+        if step is not None:
+            user.totp_last_used_step = step
+            return True
+    normalised = code.strip().upper()
+    hashes = list(user.totp_recovery_hashes or [])
+    for i, h in enumerate(hashes):
+        if verify_password(normalised, h):
+            hashes.pop(i)
+            user.totp_recovery_hashes = hashes
+            return True
+    return False
 
 
 async def rotate_refresh_token(session: AsyncSession, raw_token: str) -> tuple[str, User]:
@@ -307,6 +363,9 @@ async def rotate_refresh_token(session: AsyncSession, raw_token: str) -> tuple[s
             raise HTTPException(status_code=401, detail="Refresh token expired")
         else:
             user = await session.get(User, rt.user_id)
+            if user is not None:
+                user.last_active_at = datetime.now(timezone.utc)
+                user.inactivity_warned_at = None
 
             new_raw = secrets.token_urlsafe(32)
             new_rt = RefreshToken(

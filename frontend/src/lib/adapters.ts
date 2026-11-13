@@ -41,7 +41,7 @@ function categoryLabel(apiCategory: string, venueType?: string | null, name?: st
 
 // Shown only for a listing with no photo yet. Served from our own origin
 // rather than hot-linked from a stock-photo CDN.
-const PLACEHOLDER_IMAGE = '/img/occasions/dusk-sports.webp';
+const PLACEHOLDER_IMAGE = '/img/photos/placeholder-800.webp';
 
 function isVideoMedia(item: { media_type?: string; url?: string }): boolean {
   if (item.media_type === 'video') return true;
@@ -77,6 +77,7 @@ export function adaptVenue(v: ApiVenue): Venue {
   const environment = specsBlock?.settings?.environment || undefined;
 
   return {
+    seller: v.seller ?? null,
     id: v.id,
     slug: v.slug || v.id,
     name: v.name,

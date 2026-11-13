@@ -171,7 +171,7 @@ async def test_cannot_block_over_confirmed_booking(client, base_venue, seeded_ve
         "/api/v1/bookings",
         json={
             "inventory_unit_id": unit_id,
-            "guest_name": "Test",
+            "age_confirmed": True, "guest_name": "Test",
             "guest_email": "test@test.com"
         }
     )

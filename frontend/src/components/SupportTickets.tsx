@@ -1,3 +1,4 @@
+import PrivacyNote from './legal/PrivacyNote';
 import { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../lib/auth';
@@ -194,6 +195,7 @@ function CreateTicketView({ onBack, defaultContext }: { onBack: () => void; defa
           >
             {createTicket.isPending ? 'Submitting...' : 'Submit Ticket'}
           </button>
+          <PrivacyNote>What you write here is used only to resolve this ticket and is kept for 2 years after it closes.</PrivacyNote>
         </form>
       </div>
     </div>

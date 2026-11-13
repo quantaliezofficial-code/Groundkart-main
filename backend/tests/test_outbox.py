@@ -34,7 +34,7 @@ def make_booking_payload(seeded_owner_with_unit):
     _, _, unit_id = seeded_owner_with_unit
     return {
         "inventory_unit_id": str(unit_id),
-        "guest_name": "Guest User",
+        "age_confirmed": True, "guest_name": "Guest User",
         "guest_email": "guest@example.com",
         "guest_phone": "+919876543210"
     }

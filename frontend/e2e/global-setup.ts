@@ -42,7 +42,9 @@ async function globalSetup(config: FullConfig) {
     },
   ];
 
-  const browser = await chromium.launch();
+  const browser = await chromium.launch(
+    process.env.PW_CHROMIUM_PATH ? { executablePath: process.env.PW_CHROMIUM_PATH } : {},
+  );
 
   for (const cred of credentials) {
     const context = await browser.newContext({ baseURL });
@@ -57,6 +59,18 @@ async function globalSetup(config: FullConfig) {
 
     if (!loginRes.ok()) {
       throw new Error(`Global setup failed to authenticate ${cred.role} via API: ${loginRes.status()} ${await loginRes.text()}`);
+    }
+
+    // Accounts created before the Privacy Notice existed are asked to accept
+    // it (NoticeUpdateBanner). Accept once here, as the person would, so the
+    // banner does not sit over the pages other suites click through.
+    const { access_token: token } = await loginRes.json();
+    const me = await (await context.request.get(`${apiUrl}/api/v1/users/me`, { headers: { Authorization: `Bearer ${token}` } })).json();
+    if (cred.role !== 'admin' && (me.accepted_terms_version !== '1.0' || !me.age_confirmed)) {
+      await context.request.post(`${apiUrl}/api/v1/me/consents/accept`, {
+        headers: { Authorization: `Bearer ${token}` },
+        data: { accept: true, age_confirmed: true },
+      });
     }
 
     const page = await context.newPage();

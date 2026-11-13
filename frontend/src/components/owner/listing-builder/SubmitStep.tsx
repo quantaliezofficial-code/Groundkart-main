@@ -1,3 +1,4 @@
+import PrivacyNote from '../../legal/PrivacyNote';
 import React from 'react';
 import { ListingFormData } from './ListingBuilder';
 import { CheckCircle2, ShieldCheck, Clock, Sparkles, Check, ArrowRight, AlertCircle, AlertTriangle } from 'lucide-react';
@@ -173,6 +174,14 @@ export default function SubmitStep({ data, submissionProblems = [], onJumpToStep
               <strong>Calendar & Slot Control:</strong> Your scheduled slots will automatically be bookable by customers, and you can add more slots or block dates at any time from the <strong>Owner Calendar</strong>.
             </p>
           </div>
+        </div>
+        <div className="mt-5 space-y-2 border-t border-ink/10 pt-4 text-xs text-on-surface-variant">
+          <p>
+            By submitting you confirm the listing is accurate, you may offer this venue and publish its photos, and you agree to the{' '}
+            <a href="/terms" target="_blank" rel="noopener" className="font-medium text-pitch underline underline-offset-2">Terms of Service</a>{' '}
+            for venue owners, including using customers' details only for their bookings.
+          </p>
+          <PrivacyNote>Your listing is public once approved. Do not upload photos of identifiable people without their permission.</PrivacyNote>
         </div>
       </div>
     </div>

@@ -26,6 +26,8 @@ docs/
 │   ├── cleanup-and-maintenance/    ← Cleanup plans, verification matrices
 │   └── auth-and-fixes/             ← Auth fix reports, password reset plans
 ├── 12-reference/                   ← Glossary, known limitations, support tickets
+├── guides/                         ← Admin and Super Admin guides (with PDFs)
+├── compliance/                     ← DPDP / e-commerce research, data map, plan, drafts, score
 ├── management/                     ← Documentation inventory and manifest
 └── website-documentation/          ← Generated comprehensive website docs (source-of-truth)
     └── diagrams/                   ← Mermaid architecture diagrams
@@ -37,6 +39,11 @@ docs/
 
 | Area | File |
 |---|---|
+| **Handover (start here)** | [../HANDOVER.md](../HANDOVER.md) |
+| **Super Admin Guide** | [guides/SUPER_ADMIN_GUIDE.md](guides/SUPER_ADMIN_GUIDE.md) |
+| **Admin Guide** | [guides/ADMIN_GUIDE.md](guides/ADMIN_GUIDE.md) |
+| **Deploying to Hostinger** | [09-operations-and-deployment/DEPLOYMENT.md](09-operations-and-deployment/DEPLOYMENT.md) |
+| **Compliance report** | [../COMPLIANCE_REPORT.md](../COMPLIANCE_REPORT.md) and [compliance/](compliance/) |
 | Project Overview | [01-overview/PROJECT_OVERVIEW.md](01-overview/PROJECT_OVERVIEW.md) |
 | Getting Started | [01-overview/GroundBooking_Getting_Started_Guide (1).md](01-overview/GroundBooking_Getting_Started_Guide%20(1).md) |
 | Technical Architecture | [04-architecture-and-design/TECHNICAL_ARCHITECTURE.md](04-architecture-and-design/TECHNICAL_ARCHITECTURE.md) |

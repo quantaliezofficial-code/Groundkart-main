@@ -47,9 +47,13 @@ export default defineConfig({
   globalSetup: path.resolve(__dirname, './e2e/global-setup.ts'),
   use: {
     baseURL,
+    // Optional: use a system Chrome instead of the bundled browser
+    // (PW_CHROMIUM_PATH=/usr/bin/google-chrome), e.g. on machines without
+    // `npx playwright install`.
+    ...(process.env.PW_CHROMIUM_PATH ? { launchOptions: { executablePath: process.env.PW_CHROMIUM_PATH } } : {}),
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
-    video: 'retain-on-failure',
+    video: process.env.PW_NO_VIDEO ? 'off' : 'retain-on-failure',
     actionTimeout: 15_000,
     navigationTimeout: 30_000,
   },

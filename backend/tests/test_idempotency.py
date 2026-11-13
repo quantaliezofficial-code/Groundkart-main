@@ -38,7 +38,7 @@ async def db_session(test_session_factory):
 def make_booking_payload(seeded_unit):
     return {
         "inventory_unit_id": str(seeded_unit),
-        "guest_name": None,
+        "age_confirmed": True, "guest_name": None,
         "guest_email": None,
         "guest_phone": None
     }

@@ -72,6 +72,9 @@ class AdminOwnerVerificationView(BaseModel):
     applicant_phone: str | None = None
     document_url: str | None = None
     identification_type: str | None = None
+    # Masked ("••••••234F"); the full value is only available through the
+    # audited /numbers endpoint.
+    identification_number: str | None = None
     business_name: str | None
     pan: str | None = None
     gstin: str | None = None
@@ -90,15 +93,21 @@ class AdminOwnerVerificationView(BaseModel):
             applicant_phone=verification.user.phone if verification.user else None,
             document_url=verification.document_url,
             identification_type=verification.identification_type,
-            identification_number=verification.identification_number,
+            identification_number=_mask(verification.identification_number),
             business_name=verification.business_name,
-            pan=getattr(verification, "pan", None),
-            gstin=getattr(verification, "gstin", None),
+            pan=_mask(getattr(verification, "pan", None)),
+            gstin=_mask(getattr(verification, "gstin", None)),
             status=verification.status,
             rejection_reason=verification.rejection_reason,
             created_at=verification.created_at,
             reviewed_at=verification.reviewed_at,
         )
+
+
+def _mask(value):
+    from app.modules.core.crypto import mask
+
+    return mask(value)
 
 
 def _loaded_broker_name(venue) -> str | None:
@@ -299,6 +308,12 @@ class AdminReviewView(BaseModel):
     rating: int
     content: str
     created_at: datetime
+    # Only verified reviews are public; unverified ones are kept here for moderation.
+    verified_booking: bool = False
+    is_demo: bool = False
+    hidden_at: datetime | None = None
+    hidden_reason: str | None = None
+    featured: bool = False
 
     @classmethod
     def from_review(cls, review) -> "AdminReviewView":
@@ -311,6 +326,11 @@ class AdminReviewView(BaseModel):
             rating=review.rating,
             content=review.content,
             created_at=review.created_at,
+            verified_booking=bool(getattr(review, "verified", False)),
+            is_demo=bool(getattr(review, "is_demo", False)),
+            hidden_at=getattr(review, "hidden_at", None),
+            hidden_reason=getattr(review, "hidden_reason", None),
+            featured=bool(getattr(review, "featured", False)),
         )
 
 

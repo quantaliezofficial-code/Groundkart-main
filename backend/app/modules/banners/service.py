@@ -36,6 +36,9 @@ def clean_cta_url(raw: str | None) -> str | None:
     url = raw.strip()
     if not url:
         return None
+    if any(ch == "\\" or ord(ch) < 32 or ord(ch) == 127 for ch in url):
+        # "/\\evil.example" is read by browsers as "//evil.example".
+        raise HTTPException(status_code=422, detail="Link must not contain backslashes or control characters")
     if url.startswith("/") and not url.startswith("//"):
         return url
     parsed = urlparse(url)

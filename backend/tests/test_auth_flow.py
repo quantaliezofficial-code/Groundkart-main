@@ -38,13 +38,13 @@ async def client(test_session_factory):
 async def test_signup_then_login_returns_access_token(client):
     signup_resp = await client.post(
         "/api/v1/auth/signup",
-        json={"name": "Priya Sharma", "email": "priya@example.com", "password": "a-decent-password", "phone": f"123{uuid.uuid4().hex[:7]}"},
+        json={"name": "Priya Sharma", "email": "priya@example.com", "age_confirmed": True, "password": "a-decent-password", "phone": f"123{uuid.uuid4().hex[:7]}"},
     )
     assert signup_resp.status_code == 201
 
     login_resp = await client.post(
         "/api/v1/auth/login",
-        json={"login_id": "priya@example.com", "password": "a-decent-password", "phone": f"123{uuid.uuid4().hex[:7]}"},
+        json={"login_id": "priya@example.com", "age_confirmed": True, "password": "a-decent-password", "phone": f"123{uuid.uuid4().hex[:7]}"},
     )
     assert login_resp.status_code == 200
     assert "access_token" in login_resp.json()
@@ -54,16 +54,16 @@ async def test_signup_then_login_returns_access_token(client):
 async def test_login_with_wrong_password_returns_401(client):
     await client.post(
         "/api/v1/auth/signup",
-        json={"name": "Priya Sharma", "login_id": "priya2@example.com", "password": "a-decent-password", "phone": f"123{uuid.uuid4().hex[:7]}"},
+        json={"name": "Priya Sharma", "login_id": "priya2@example.com", "age_confirmed": True, "password": "a-decent-password", "phone": f"123{uuid.uuid4().hex[:7]}"},
     )
     resp = await client.post(
-        "/api/v1/auth/login", json={"login_id": "priya2@example.com", "password": "totally-wrong", "phone": f"123{uuid.uuid4().hex[:7]}"}
+        "/api/v1/auth/login", json={"login_id": "priya2@example.com", "age_confirmed": True, "password": "totally-wrong", "phone": f"123{uuid.uuid4().hex[:7]}"}
     )
     assert resp.status_code == 401
 
 
 async def test_signup_duplicate_email_returns_409(client):
-    body = {"name": "Priya", "email": "dupe@example.com", "password": "a-decent-password", "phone": f"123{uuid.uuid4().hex[:7]}"}
+    body = {"name": "Priya", "email": "dupe@example.com", "age_confirmed": True, "password": "a-decent-password", "phone": f"123{uuid.uuid4().hex[:7]}"}
     first = await client.post("/api/v1/auth/signup", json=body)
     second = await client.post("/api/v1/auth/signup", json=body)
     assert first.status_code == 201
@@ -73,14 +73,14 @@ async def test_signup_duplicate_email_returns_409(client):
 async def test_login_rate_limited_after_too_many_attempts(client):
     await client.post(
         "/api/v1/auth/signup",
-        json={"name": "Priya", "login_id": "ratelimit@example.com", "password": "a-decent-password", "phone": f"123{uuid.uuid4().hex[:7]}"},
+        json={"name": "Priya", "login_id": "ratelimit@example.com", "age_confirmed": True, "password": "a-decent-password", "phone": f"123{uuid.uuid4().hex[:7]}"},
     )
 
     statuses = []
     for _ in range(12):
         resp = await client.post(
             "/api/v1/auth/login",
-            json={"login_id": "ratelimit@example.com", "password": "wrong-on-purpose", "phone": f"123{uuid.uuid4().hex[:7]}"},
+            json={"login_id": "ratelimit@example.com", "age_confirmed": True, "password": "wrong-on-purpose", "phone": f"123{uuid.uuid4().hex[:7]}"},
         )
         statuses.append(resp.status_code)
 
@@ -93,10 +93,10 @@ async def test_login_rate_limited_after_too_many_attempts(client):
 async def test_refresh_rotates_and_old_refresh_token_then_fails(client):
     await client.post(
         "/api/v1/auth/signup",
-        json={"name": "Priya", "email": "rotate@example.com", "password": "a-decent-password", "phone": f"123{uuid.uuid4().hex[:7]}"},
+        json={"name": "Priya", "email": "rotate@example.com", "age_confirmed": True, "password": "a-decent-password", "phone": f"123{uuid.uuid4().hex[:7]}"},
     )
     login_resp = await client.post(
-        "/api/v1/auth/login", json={"login_id": "rotate@example.com", "password": "a-decent-password", "phone": f"123{uuid.uuid4().hex[:7]}"}
+        "/api/v1/auth/login", json={"login_id": "rotate@example.com", "age_confirmed": True, "password": "a-decent-password", "phone": f"123{uuid.uuid4().hex[:7]}"}
     )
     old_refresh_cookie = login_resp.cookies[REFRESH_COOKIE_NAME]
 
@@ -123,10 +123,10 @@ async def test_refresh_reuse_revokes_even_the_legitimate_new_session(client):
     silently ignoring it."""
     await client.post(
         "/api/v1/auth/signup",
-        json={"name": "Priya", "email": "reuse2@example.com", "password": "a-decent-password", "phone": f"123{uuid.uuid4().hex[:7]}"},
+        json={"name": "Priya", "email": "reuse2@example.com", "age_confirmed": True, "password": "a-decent-password", "phone": f"123{uuid.uuid4().hex[:7]}"},
     )
     login_resp = await client.post(
-        "/api/v1/auth/login", json={"login_id": "reuse2@example.com", "password": "a-decent-password", "phone": f"123{uuid.uuid4().hex[:7]}"}
+        "/api/v1/auth/login", json={"login_id": "reuse2@example.com", "age_confirmed": True, "password": "a-decent-password", "phone": f"123{uuid.uuid4().hex[:7]}"}
     )
     old_refresh_cookie = login_resp.cookies[REFRESH_COOKIE_NAME]
 
@@ -146,10 +146,10 @@ async def test_refresh_reuse_revokes_even_the_legitimate_new_session(client):
 async def test_logout_revokes_only_that_session(client):
     await client.post(
         "/api/v1/auth/signup",
-        json={"name": "Priya", "email": "logout@example.com", "password": "a-decent-password", "phone": f"123{uuid.uuid4().hex[:7]}"},
+        json={"name": "Priya", "email": "logout@example.com", "age_confirmed": True, "password": "a-decent-password", "phone": f"123{uuid.uuid4().hex[:7]}"},
     )
     login_resp = await client.post(
-        "/api/v1/auth/login", json={"login_id": "logout@example.com", "password": "a-decent-password", "phone": f"123{uuid.uuid4().hex[:7]}"}
+        "/api/v1/auth/login", json={"login_id": "logout@example.com", "age_confirmed": True, "password": "a-decent-password", "phone": f"123{uuid.uuid4().hex[:7]}"}
     )
     refresh_cookie = login_resp.cookies[REFRESH_COOKIE_NAME]
     client.cookies.set(REFRESH_COOKIE_NAME, refresh_cookie)
@@ -182,7 +182,7 @@ async def test_forgot_password_flow(client):
     email = f"forgot_{uuid.uuid4().hex[:6]}@example.com"
     await client.post(
         "/api/v1/auth/signup",
-        json={"name": "Forgot User", "email": email, "password": "a-decent-password", "phone": phone},
+        json={"name": "Forgot User", "email": email, "age_confirmed": True, "password": "a-decent-password", "phone": phone},
     )
 
     # Existing user
@@ -209,21 +209,21 @@ async def test_signup_validation_email_and_phone(client):
     # 1. Invalid email without domain
     resp = await client.post(
         "/api/v1/auth/signup",
-        json={"name": "Bad Email", "email": "invalidemail", "password": "password123", "phone": "9876543210"},
+        json={"name": "Bad Email", "email": "invalidemail", "age_confirmed": True, "password": "password123", "phone": "9876543210"},
     )
     assert resp.status_code == 422
 
     # 2. Invalid email missing @
     resp = await client.post(
         "/api/v1/auth/signup",
-        json={"name": "Bad Email", "email": "ashleyleon.gmail.com", "password": "password123", "phone": "9876543210"},
+        json={"name": "Bad Email", "email": "ashleyleon.gmail.com", "age_confirmed": True, "password": "password123", "phone": "9876543210"},
     )
     assert resp.status_code == 422
 
     # 3. Invalid phone too short (< 10 digits)
     resp = await client.post(
         "/api/v1/auth/signup",
-        json={"name": "Short Phone", "email": "testshort@example.com", "password": "password123", "phone": "12345"},
+        json={"name": "Short Phone", "email": "testshort@example.com", "age_confirmed": True, "password": "password123", "phone": "12345"},
     )
     assert resp.status_code == 422
 
@@ -231,7 +231,7 @@ async def test_signup_validation_email_and_phone(client):
     unique_gmail = f"user_{uuid.uuid4().hex[:6]}@gmail.com"
     resp = await client.post(
         "/api/v1/auth/signup",
-        json={"name": "Gmail User", "email": unique_gmail, "password": "password123", "phone": f"98{uuid.uuid4().int % 100000000:08d}"},
+        json={"name": "Gmail User", "email": unique_gmail, "age_confirmed": True, "password": "password123", "phone": f"98{uuid.uuid4().int % 100000000:08d}"},
     )
     assert resp.status_code == 201
 
@@ -239,7 +239,7 @@ async def test_signup_validation_email_and_phone(client):
     unique_custom = f"user_{uuid.uuid4().hex[:6]}@mycompany.org"
     resp = await client.post(
         "/api/v1/auth/signup",
-        json={"name": "Custom Domain User", "email": unique_custom, "password": "password123", "phone": f"97{uuid.uuid4().int % 100000000:08d}"},
+        json={"name": "Custom Domain User", "email": unique_custom, "age_confirmed": True, "password": "password123", "phone": f"97{uuid.uuid4().int % 100000000:08d}"},
     )
     assert resp.status_code == 201
 

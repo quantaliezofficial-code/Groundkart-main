@@ -1,12 +1,32 @@
 import { api } from './client';
 import type { AccessTokenResponse, SignupResponse, UserMe } from './types';
 
-export const authApi = {
-  signup: (name: string, email: string, password: string, phone: string) =>
-    api.post<SignupResponse>('/api/v1/auth/signup', { name, email, password, phone }, { skipAuth: true }),
+import { LEGAL_VERSIONS } from '../legal';
 
-  login: (loginId: string, password: string) =>
-    api.post<AccessTokenResponse>('/api/v1/auth/login', { login_id: loginId, password }, { skipAuth: true, skipRefreshRetry: true }),
+export const authApi = {
+  /** ageConfirmed: the unticked "I confirm I am 18 years or older" box (adults only). */
+  signup: (name: string, email: string, password: string, phone: string, ageConfirmed = false) =>
+    api.post<SignupResponse>(
+      '/api/v1/auth/signup',
+      {
+        name,
+        email,
+        password,
+        phone,
+        age_confirmed: ageConfirmed,
+        terms_version: LEGAL_VERSIONS.terms,
+        notice_version: LEGAL_VERSIONS.notice,
+      },
+      { skipAuth: true },
+    ),
+
+  /** otp: authenticator or recovery code, for admins with two-step sign-in. */
+  login: (loginId: string, password: string, otp?: string) =>
+    api.post<AccessTokenResponse>(
+      '/api/v1/auth/login',
+      { login_id: loginId, password, ...(otp ? { otp } : {}) },
+      { skipAuth: true, skipRefreshRetry: true },
+    ),
 
   logout: () => api.post<void>('/api/v1/auth/logout', undefined, { skipRefreshRetry: true }),
 

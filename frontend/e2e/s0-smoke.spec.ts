@@ -35,7 +35,9 @@ test.describe('S0 Smoke Suite @smoke', () => {
     const staticPages = [
       { path: '/about', heading: /Precision in Every Play|About/i },
       { path: '/contact', heading: /We're Here to Help|Contact/i },
-      { path: '/privacy', heading: /Privacy Policy/i },
+      { path: '/refunds', heading: /Refund/i },
+      { path: '/grievance', heading: /Grievance/i },
+      { path: '/privacy', heading: /Privacy (Policy|Notice)/i },
       { path: '/terms', heading: /Terms of Service/i },
     ];
 
@@ -52,19 +54,19 @@ test.describe('S0 Smoke Suite @smoke', () => {
     await footer.scrollIntoViewIfNeeded();
 
     // Click About Us
-    await footer.getByRole('link', { name: 'About Us' }).click();
+    await footer.getByRole('link', { name: /^About( Us)?$/ }).click();
     await expect(page).toHaveURL(/\/about$/);
 
     // Click Contact
-    await page.locator('footer').getByRole('link', { name: 'Contact' }).click();
+    await page.locator('footer').getByRole('link', { name: 'Contact', exact: true }).click();
     await expect(page).toHaveURL(/\/contact$/);
 
     // Click Privacy Policy
-    await page.locator('footer').getByRole('link', { name: 'Privacy Policy' }).click();
+    await page.locator('footer').getByRole('link', { name: /^Privacy (Policy|notice)$/i }).click();
     await expect(page).toHaveURL(/\/privacy$/);
 
     // Click Terms of Service
-    await page.locator('footer').getByRole('link', { name: 'Terms of Service' }).click();
+    await page.locator('footer').getByRole('link', { name: /^Terms of service$/i }).click();
     await expect(page).toHaveURL(/\/terms$/);
   });
 });

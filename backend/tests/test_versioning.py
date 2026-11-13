@@ -15,7 +15,7 @@ def test_api_versioning_legacy_and_v1_auth():
         res_v1 = client.post('/api/v1/auth/signup', json={
             'name': 'Test V1',
             'phone': '9999999995',
-            'password': 'password123',
+            'age_confirmed': True, 'password': 'password123',
             'email': 'testv5@example.com'
         })
         assert res_v1.status_code in [201, 400, 422, 429]
@@ -24,7 +24,7 @@ def test_api_versioning_legacy_and_v1_auth():
         res_legacy = client.post('/auth/signup', json={
             'name': 'Test Legacy',
             'phone': '8888888886',
-            'password': 'password123',
+            'age_confirmed': True, 'password': 'password123',
             'email': 'testlegacy6@example.com'
         })
         assert res_legacy.status_code in [201, 400, 422, 429]

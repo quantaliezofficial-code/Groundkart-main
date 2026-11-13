@@ -11,7 +11,8 @@ import Header from './components/Header';
 function ScrollReveal({ children, className = '' }: { children: React.ReactNode; className?: string; delay?: number }) {
   return <div className={className}>{children}</div>;
 }
-import HomePage, { HOME_FAQ } from './components/home/HomePage';
+import HomePage from './components/home/HomePage';
+import { useHomepageContent } from './lib/homepageContent';
 import SiteFooter from './components/SiteFooter';
 import SearchTopBanner from './components/SearchTopBanner';
 import VenueCard from './components/VenueCard';
@@ -32,12 +33,24 @@ import SEOHead from './components/SEOHead';
 import { generateWebsiteSchema, generateOrganizationSchema, generateCollectionPageSchema, generateBreadcrumbSchema } from './lib/schema';
 import About from './components/About';
 import Contact from './components/Contact';
-import PrivacyPolicy from './components/PrivacyPolicy';
-import TermsOfService from './components/TermsOfService';
+import LegalPage from './components/legal/LegalPage';
+import CookieSettings from './components/legal/CookieSettings';
+import DemoBanner from './components/legal/DemoBanner';
+import NoticeUpdateBanner from './components/legal/NoticeUpdateBanner';
+import type { LegalDocKey } from './lib/legal';
 import NotFound from './components/NotFound';
 import { absUrl, SITE_NAME } from './lib/site';
 
 // Lazy loading large sub-views to optimize first-load bundle size and protect the main thread
+const LEGAL_PATHS: Record<string, LegalDocKey> = {
+  '/privacy': 'privacy',
+  '/terms': 'terms',
+  '/refunds': 'refunds',
+  '/cookies': 'cookies',
+  '/grievance': 'grievance',
+  '/your-data': 'data-rights',
+};
+
 const DetailView = React.lazy(() => import('./components/DetailView'));
 const ReviewPay = React.lazy(() => import('./components/ReviewPay'));
 const OwnerLayout = React.lazy(() => import('./components/OwnerLayout'));
@@ -45,6 +58,7 @@ const AdminLayout = React.lazy(() => import('./components/AdminLayout'));
 const BrokerLayout = React.lazy(() => import('./components/broker/BrokerLayout'));
 const MyBookings = React.lazy(() => import('./components/MyBookings'));
 const SupportTickets = React.lazy(() => import('./components/SupportTickets'));
+const MyData = React.lazy(() => import('./components/MyData'));
 
 // Reusable custom skeleton loaders to ensure no layout shift (CLS) and premium perceived speed
 function DashboardSkeleton() {
@@ -172,6 +186,8 @@ interface StoredSearchFilters {
 export default function App() {
   const { user, isLoading: isAuthLoading } = useAuth();
   const toast = useToast();
+  // Homepage copy (Admin › Website); the FAQ also feeds the FAQPage schema.
+  const homeContent = useHomepageContent();
 
   // Global Perspective Role SWITCHER state — dev-only, gated below; real
   // customers never see this. Both Owner and Admin dashboards are now
@@ -233,7 +249,7 @@ export default function App() {
   // login/signup can resume exactly what the person was trying to do.
   const [pendingAction, setPendingAction] = useState<(() => void) | null>(null);
 
-  type AppView = 'home' | 'search' | 'detail' | 'checkout' | 'my-bookings' | 'support' | 'about' | 'contact' | 'terms' | 'privacy' | '404';
+  type AppView = 'home' | 'search' | 'detail' | 'checkout' | 'my-bookings' | 'support' | 'about' | 'contact' | 'terms' | 'privacy' | 'legal' | 'my-data' | '404';
 
   const location = useLocation();
   const navigate = useNavigate();
@@ -242,6 +258,7 @@ export default function App() {
   // Navigation & Primary State
   const [supportContext, setSupportContext] = useState<{ type: 'booking' | 'venue'; id: string } | null>(null);
   const [currentView, setCurrentView] = useState<AppView>('home');
+  const [legalDoc, setLegalDoc] = useState<LegalDocKey>('privacy');
   const [searchQuery, setSearchQuery] = useState('');
   
   // Hero inputs
@@ -491,11 +508,12 @@ export default function App() {
     } else if (path === '/contact') {
       setCurrentView('contact');
       setActiveRole('client');
-    } else if (path === '/privacy') {
-      setCurrentView('privacy');
+    } else if (LEGAL_PATHS[path]) {
+      setLegalDoc(LEGAL_PATHS[path]);
+      setCurrentView('legal');
       setActiveRole('client');
-    } else if (path === '/terms') {
-      setCurrentView('terms');
+    } else if (path === '/account/data') {
+      setCurrentView('my-data');
       setActiveRole('client');
     } else if (path === '/owner') {
       setActiveRole('owner');
@@ -918,6 +936,10 @@ export default function App() {
   return (
     <div className={`bg-mist text-ink font-sans ${isDashboardRole ? 'h-screen overflow-hidden' : 'min-h-screen flex flex-col'} antialiased`}>
       
+      <DemoBanner />
+      <CookieSettings />
+      <NoticeUpdateBanner onNavigate={(path) => navigate(path)} />
+
       {/* Global Transparent Sticky Header */}
       {activeRole === 'client' && (
         <Header
@@ -933,6 +955,7 @@ export default function App() {
             else if (view === 'contact') navigate('/contact');
             else if (view === 'privacy') navigate('/privacy');
             else if (view === 'terms') navigate('/terms');
+            else if (view === 'my-data') navigate('/account/data');
             if (view !== 'support') setSupportContext(null);
           }}
           searchQuery={searchQuery}
@@ -1020,7 +1043,7 @@ export default function App() {
                   jsonLd={[generateWebsiteSchema(), generateOrganizationSchema(), {
                     '@context': 'https://schema.org',
                     '@type': 'FAQPage',
-                    mainEntity: HOME_FAQ.map((f) => ({
+                    mainEntity: homeContent.faq.map((f) => ({
                       '@type': 'Question',
                       name: f.q,
                       acceptedAnswer: { '@type': 'Answer', text: f.a },
@@ -1453,6 +1476,9 @@ export default function App() {
                           guest_count: extra?.guest_count,
                           customer_notes: extra?.customer_notes,
                           idempotencyKey: extra?.idempotencyKey,
+                          age_confirmed: extra?.age_confirmed,
+                          terms_version: extra?.terms_version,
+                          notice_version: extra?.notice_version,
                           ...(user
                             ? {}
                             : { guest_name: guestName, guest_email: guestEmail, guest_phone: guestPhone }),
@@ -1523,8 +1549,12 @@ export default function App() {
             {/* ================= VIEW 6: STATIC INFORMATIONAL & LEGAL PAGES ================= */}
             {currentView === 'about' && <About />}
             {currentView === 'contact' && <Contact />}
-            {currentView === 'privacy' && <PrivacyPolicy />}
-            {currentView === 'terms' && <TermsOfService />}
+            {currentView === 'legal' && <LegalPage doc={legalDoc} />}
+            {currentView === 'my-data' && (
+              <React.Suspense fallback={<div className="min-h-[60vh]" />}>
+                <MyData onRequestAuth={() => setAuthModalMode('login')} />
+              </React.Suspense>
+            )}
             {currentView === '404' && <NotFound />}
 
           </>

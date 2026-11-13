@@ -12,7 +12,13 @@ import PartnersTab from './admin/PartnersTab';
 import BannersTab from './admin/BannersTab';
 import SettingsTab from './admin/SettingsTab';
 import TeamTab from './admin/TeamTab';
-import { FileSpreadsheet, Handshake, Megaphone, SlidersHorizontal, UserCog } from 'lucide-react';
+import ComplianceTab, { SlaBadge } from './admin/ComplianceTab';
+import TwoStepSetup from './admin/TwoStepSetup';
+import WebsiteTab from './admin/WebsiteTab';
+import ReviewModeration from './admin/ReviewModeration';
+import MinorAccountButton from './admin/MinorAccountButton';
+import { complianceApi } from '../lib/api/compliance';
+import { FileSpreadsheet, Handshake, LayoutTemplate, Megaphone, SlidersHorizontal, UserCog } from 'lucide-react';
 import { AdminVenueDrawer } from './dashboard/AdminVenueDrawer';
 import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
@@ -64,9 +70,9 @@ import type {
 import { useAuth } from '../lib/auth';
 
 type Tab = 'Overview' | 'Analytics' | 'DatabaseStudio' | 'ApprovalQueue' | 'Venues' | 'Users' | 'Bookings' | 'Payouts' | 'Reviews' | 'Support' | 'Notifications' | 'Homepage' | 'Passwords'
-  | 'Records' | 'Partners' | 'Banners' | 'Settings' | 'Team';
+  | 'Records' | 'Partners' | 'Banners' | 'Settings' | 'Compliance' | 'Website' | 'Team';
 
-const ALL_TABS: Tab[] = ['Overview', 'Analytics', 'DatabaseStudio', 'ApprovalQueue', 'Venues', 'Users', 'Bookings', 'Payouts', 'Reviews', 'Support', 'Notifications', 'Homepage', 'Passwords', 'Records', 'Partners', 'Banners', 'Settings', 'Team'];
+const ALL_TABS: Tab[] = ['Overview', 'Analytics', 'DatabaseStudio', 'ApprovalQueue', 'Venues', 'Users', 'Bookings', 'Payouts', 'Reviews', 'Support', 'Notifications', 'Homepage', 'Passwords', 'Records', 'Partners', 'Banners', 'Settings', 'Compliance', 'Website', 'Team'];
 
 function money(value: string | number): string {
   const n = typeof value === 'string' ? Number(value) : value;
@@ -125,6 +131,20 @@ export default function AdminLayout({ onReturnToSite }: { onReturnToSite?: () =>
       <div className="max-w-xl mx-auto py-24 text-center space-y-3">
         <AlertCircle size={32} className="mx-auto text-ink/40" />
         <p className="font-sans text-on-surface-variant">This dashboard is only available to platform admins.</p>
+      </div>
+    );
+  }
+
+  // Admins must enrol an authenticator app before the console opens where
+  // the server requires it (production default). The API enforces the same
+  // rule, so this screen only saves a wall of "two_factor_setup_required" errors.
+  if (user.two_factor_setup_required) {
+    return (
+      <div className="mx-auto max-w-3xl space-y-4 px-4 py-16" data-testid="two-step-gate">
+        <TwoStepSetup required />
+        <button type="button" onClick={() => void logout()} className="text-sm font-semibold text-pitch underline-offset-4 hover:underline cursor-pointer">
+          Sign out
+        </button>
       </div>
     );
   }
@@ -193,10 +213,12 @@ function AdminDashboard({ onReturnToSite }: { onReturnToSite?: () => void }) {
     { section: 'Money and records', id: 'Records', label: 'Records and exports', icon: FileSpreadsheet, onClick: go('Records') },
     { section: 'Money and records', id: 'Analytics', label: 'Analytics', icon: Activity, onClick: go('Analytics') },
     { section: 'Money and records', id: 'DatabaseStudio', label: 'Database studio', icon: Database, onClick: go('DatabaseStudio') },
+    { section: 'Website', id: 'Website', label: 'Homepage content and images', icon: LayoutTemplate, onClick: go('Website') },
     { section: 'Website', id: 'Homepage', label: 'Homepage venues', icon: Globe, onClick: go('Homepage') },
     { section: 'Website', id: 'Banners', label: 'Banners', icon: Megaphone, onClick: go('Banners') },
     { section: 'Website', id: 'Notifications', label: 'Notifications', icon: Bell, onClick: go('Notifications') },
     { section: 'Platform', id: 'Settings', label: 'Rules and fees', icon: SlidersHorizontal, onClick: go('Settings') },
+    { section: 'Platform', id: 'Compliance', label: 'Privacy and compliance', icon: ShieldCheck, onClick: go('Compliance') },
     { section: 'Platform', id: 'Passwords', label: 'Passwords', icon: Key, onClick: go('Passwords') },
     ...(isSuper ? [{ section: 'Platform', id: 'Team', label: 'Admin team', icon: UserCog, onClick: go('Team') }] : []),
   ];
@@ -218,7 +240,9 @@ function AdminDashboard({ onReturnToSite }: { onReturnToSite?: () => void }) {
     Records: { title: 'Records and exports', desc: 'Every listing and booking with its money trail, ready to download' },
     Partners: { title: 'Referral partners', desc: 'Partners, their venues, commission and payouts' },
     Banners: { title: 'Banners', desc: 'Promotions and announcements on the website' },
-    Settings: { title: 'Rules and fees', desc: 'Booking holds, refunds, commission and payout timing' },
+    Settings: { title: 'Rules and fees', desc: 'Booking holds, refunds, commission, payout timing and legal details' },
+    Website: { title: 'Homepage content and images', desc: 'Text, photos, sections and versions of the homepage (super admin edits)' },
+    Compliance: { title: 'Privacy and compliance', desc: 'Complaint clocks, data requests, incidents and sign-in security' },
     Team: { title: 'Admin team', desc: 'Who can use this console' },
   };
 
@@ -266,6 +290,8 @@ function AdminDashboard({ onReturnToSite }: { onReturnToSite?: () => void }) {
       {activeTab === 'Partners' && <PartnersTab />}
       {activeTab === 'Banners' && <BannersTab />}
       {activeTab === 'Settings' && <SettingsTab />}
+      {activeTab === 'Compliance' && <ComplianceTab />}
+      {activeTab === 'Website' && <WebsiteTab />}
       {activeTab === 'Team' && (isSuper ? <TeamTab /> : <EmptyState icon={ShieldCheck} title="Super admin only" description="Only the super admin can manage the admin team." />)}
     </DashboardShell>
   );
@@ -829,6 +855,7 @@ function ApprovalQueueTab({
                 <div>
                   <p className="font-semibold text-ink">{v.business_name ?? 'No business name'}</p>
                   <p className="text-sm text-on-surface-variant">{v.identification_type} · {v.identification_number}</p>
+                  <RevealNumbers verificationId={v.id} />
                 </div>
                 <div className="flex gap-2 flex-shrink-0">
                   <button
@@ -852,6 +879,49 @@ function ApprovalQueueTab({
         )}
       </div>
     </div>
+  );
+}
+
+/** Full ID numbers stay masked until an admin asks; each reveal is audit-logged. */
+function RevealNumbers({ verificationId }: { verificationId: string }) {
+  const [shown, setShown] = useState<Record<string, string | null> | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  if (shown) {
+    return (
+      <p className="mt-1 font-mono text-xs text-ink" data-testid="revealed-numbers">
+        {Object.entries(shown)
+          .filter(([k, val]) => val && k !== 'identification_type')
+          .map(([k, val]) => `${k.replace('identification_number', 'ID').toUpperCase()}: ${val}`)
+          .join(' · ')}{' '}
+        <button type="button" onClick={() => setShown(null)} className="ml-1 font-sans font-semibold text-pitch underline cursor-pointer">
+          Hide
+        </button>
+      </p>
+    );
+  }
+  return (
+    <p className="mt-1 text-xs">
+      <button
+        type="button"
+        disabled={busy}
+        onClick={async () => {
+          setBusy(true);
+          setError(null);
+          try {
+            setShown(await complianceApi.revealVerificationNumbers(verificationId));
+          } catch (e) {
+            setError(e instanceof Error ? e.message : 'Could not load');
+          } finally {
+            setBusy(false);
+          }
+        }}
+        className="font-semibold text-pitch underline-offset-4 hover:underline cursor-pointer disabled:opacity-50"
+      >
+        Show full numbers (logged)
+      </button>
+      {error ? <span className="ml-2 text-clay">{error}</span> : null}
+    </p>
   );
 }
 
@@ -1028,6 +1098,7 @@ function UsersTab() {
                     ) : (
                       <button onClick={() => setSuspendingId(u.id)} className="text-xs px-2 py-1 bg-red-50 text-red-700 border border-red-200 rounded-lg">Suspend</button>
                     )}
+                    {u.role !== 'admin' ? <MinorAccountButton userId={u.id} name={u.name} /> : null}
                   </td>
                 </tr>
               ))}
@@ -1413,7 +1484,7 @@ function ReviewsTab() {
       <div className="flex flex-col sm:flex-row gap-4 justify-between items-start sm:items-center">
         <div>
           <h2 className="font-display text-2xl font-bold text-pitch">Reviews</h2>
-          <p className="font-sans text-sm text-on-surface-variant">Moderate user reviews across all venues</p>
+          <p className="font-sans text-sm text-on-surface-variant">Every review across all venues. Only reviews from a completed booking are public. The super admin can hide (with a reason) or feature a review; nobody can edit what a customer wrote.</p>
         </div>
         <div className="flex items-center gap-2 w-full sm:w-auto">
           <input
@@ -1493,7 +1564,8 @@ function ReviewsTab() {
                     <td className="px-6 py-4 whitespace-nowrap text-on-surface-variant">
                       {dateTimeStr(review.created_at)}
                     </td>
-                    <td className="px-6 py-4 text-right">
+                    <td className="min-w-[250px] px-6 py-4 text-right">
+                      <ReviewModeration review={review} />
                       <button
                         onClick={() => {
                           if (window.confirm('Delete this review? This cannot be undone.')) {
@@ -1609,11 +1681,14 @@ function SupportTab() {
                   <span className="font-sans text-sm font-medium">{ticket.subject}</span>
                   <StatusBadge status={ticket.status} />
                 </div>
-                <div className="flex gap-3 font-sans text-xs opacity-80">
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 font-sans text-xs opacity-80">
+                  {ticket.ticket_number ? <span className="font-mono">{ticket.ticket_number}</span> : null}
                   <span className="uppercase">{ticket.priority} priority</span>
                   <span>·</span>
                   <span>{dateTimeStr(ticket.created_at)}</span>
+                  {ticket.is_guest ? <span>· Guest</span> : null}
                 </div>
+                {ticket.sla_state && ticket.sla_state !== 'done' ? <SlaBadge state={ticket.sla_state} /> : null}
               </button>
             ))}
           </div>
@@ -1680,8 +1755,10 @@ function AdminTicketDetail({ ticketId }: { ticketId: string }) {
       <div className="border-b border-ink/10 p-4">
         <h3 className="font-sans text-lg font-medium text-ink truncate">{ticket.subject}</h3>
         <p className="mt-1 font-sans text-xs text-on-surface-variant">
-          Ticket #{ticket.id.slice(0, 8)} · Created {dateTimeStr(ticket.created_at)}
+          {ticket.ticket_number ? `Ticket ${ticket.ticket_number}` : `Ticket #${ticket.id.slice(0, 8)}`} · Created {dateTimeStr(ticket.created_at)}
+          {ticket.resolve_due_at ? ` · Resolve by ${dateTimeStr(ticket.resolve_due_at)}` : ''}
         </p>
+        {ticket.sla_state ? <div className="mt-2"><SlaBadge state={ticket.sla_state} /></div> : null}
         
         {actionError && <div className="mt-2"><ErrorBanner message={actionError} /></div>}
 

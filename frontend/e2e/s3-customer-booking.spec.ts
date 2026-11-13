@@ -1,3 +1,4 @@
+import { firstVenueSlug } from './compliance/helpers';
 import { test, expect, authenticateContext } from './fixtures';
 import { CheckoutPO } from './page-objects/Checkout';
 import { DetailViewPO } from './page-objects/DetailView';
@@ -50,7 +51,8 @@ test.describe('S3 Customer Booking Suite @regression', () => {
   });
 
   test('price on checkout matches the selected slot price', async ({ page, consoleGuard }) => {
-    await page.goto('/venues/gomti-football-arena');
+    // First live venue from the API: the seed data's slugs change between datasets.
+    await page.goto(`/venues/${await firstVenueSlug(page)}`);
     await expect(page).toHaveURL(/\/venues\//);
 
     const detailPO = new DetailViewPO(page);

@@ -112,6 +112,7 @@ def test_cors_validation_production_accepts_https_domains():
         public_app_url="https://app.example.com",
         database_url="postgresql+asyncpg://user:pass@db.example.com:5432/proddb",
         cors_allowed_origins="https://app.example.com,https://admin.example.com",
+        field_encryption_key="MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=",
     )
     assert "https://app.example.com" in s.cors_allowed_origins
 
